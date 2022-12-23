@@ -1,9 +1,10 @@
 {
   "name": "ic2crops",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tool to analyze IC2 crops",
+  "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "rollup -c",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -22,6 +23,14 @@
   },
   "homepage": "https://github.com/cubic-chariot/ic2crops#readme",
   "dependencies": {
+    "mathjs": "^11.5.0",
     "typescript": "^4.9.4"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^24.0.0",
+    "@rollup/plugin-node-resolve": "^15.0.1",
+    "@rollup/plugin-typescript": "^10.0.1",
+    "rollup": "^3.8.0",
+    "tslib": "^2.4.1"
   }
 }

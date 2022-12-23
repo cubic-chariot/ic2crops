@@ -1,3 +1,4 @@
+import { erf } from 'mathjs';
 import { WeightList, mergeWeightLists } from './Weights.js';
 
 /* Stores all crop-related info that is unlikely to change
@@ -92,11 +93,33 @@ export class StaticCropData {
      *
      * In the code (and in most places providing documentation),
      * the growth stages are indexed by 1,
-     * whereas, for convenience, we index it by zero.
+     * whereas this list is indexed by zero.
      * So, for example,
      * the growth stage durations for the essence berry would be [500, 3000, 3000, 0].
      */
     growthStages: number[] = [1000, 1000, 1000, 0];
+
+    /* The "gain factor" is the return value of CropCard.dropGainChance(),
+     * and is used to increase or decrease the average number of drops.
+     *
+     * May be above 1 (e.g. SaltyRoot's is 4).
+     * Defaults to 0.95 ** cropTier.
+     */
+    gainFactor: number = 1;
+    setDefaultGainFactor() {
+        this.gainFactor = Math.pow(0.95, this.cropTier);
+    }
+
+    /* Growth stage that the crop goes to after harvest.
+     *
+     * Some crops (notably Stickreed) transition to some random stage except the last one;
+     * for these crops, this attribute reads 'random'.
+     *
+     * This field is "indexed by 1",
+     * so a value of 1 means the crop reverts to its very frist growth stage
+     * and the largest meaningful value is growthStages.length-1.
+     */
+    growthStageAfterHarvest: number | 'random' = 1;
 
     /* Enlarge or shrinks this.growthStages so its length matches the given number.
      * Newly created stages will be assigned the default duration of 1000.
@@ -244,5 +267,67 @@ export class StaticCropData {
         }
 
         return expectedDuration[0];
+    }
+
+    computeExpectedTicksBetweenHarvests(): number {
+        let expectedTicks = new Array<number>(this.growthStages.length - 1);
+        for(let i = 0; i < this.growthStages.length - 1; i++) {
+            if(this.fertilized) {
+                expectedTicks[i] = StaticCropData.computeExpectedStepsInGrowthStage(
+                    this.growthStages[i]!, this.computeAverageGrowthPointsWithNutrition()
+                );
+            } else {
+                expectedTicks[i] = StaticCropData.computeExpectedStepsInGrowthStage(
+                    this.growthStages[i]!, this.computeGainedGrowthPoints(0)
+                );
+            }
+        }
+
+        let expectancySum = new Array<number>(this.growthStages.length);
+        expectancySum[this.growthStages.length-1] = 0;
+        for(let i = this.growthStages.length-2; i >= 0; i--) {
+            expectancySum[i] = expectancySum[i+1]! + expectedTicks[i]!;
+        }
+
+        if(typeof(this.growthStageAfterHarvest) === 'number') {
+            return expectancySum[this.growthStageAfterHarvest-1]!;
+        } else {
+            let sum = 0;
+            for(let i = 0; i < this.growthStages.length-1; i++) {
+                sum += expectancySum[i]!;
+            }
+            return sum / (this.growthStages.length-1);
+        }
+    }
+
+    computeDropCountDistribution(): WeightList<number> {
+        let baseChance = this.gainFactor * Math.pow(1.03, this.statGain);
+        /* The number of drops is calculated by the formula
+         *  round(baseChance * (1 + 0.6827 * g))
+         * where g is a random gaussian variable (mean=0, variance=1).
+         */
+        if(baseChance <= 0) return [[0, 1]];
+
+        let d: WeightList<number> = [];
+        let n = 0;
+        let accumulatedProbability = 0;
+        /* Invariant: accumulatedProbability is the probability that the number of drops
+         * is strictly smaller than n.
+         * We cannot really get the total probability to equal 1,
+         * so will approximate it to within 1e-9.
+         */
+
+        while(accumulatedProbability < 1-1e-9) {
+            /* The number of drops is <= n precisely when the rounded number is <= n+0.5;
+             * i.e. g <= ((n+0.5)/baseChance - 1)/0.6827.
+             * The probability that g <= x is given by 0.5+0.5*erf(x/sqrt(2)),
+             * so the probability of having less than n drops is computed like this:
+             */
+            let probability = 0.5+0.5*erf(((n+0.5)/baseChance-1)/0.6827/Math.SQRT2);
+            d.push([n, probability-accumulatedProbability]);
+            accumulatedProbability = probability;
+            n++;
+        }
+        return d;
     }
 }

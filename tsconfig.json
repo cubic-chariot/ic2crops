@@ -1,8 +1,7 @@
 {
   "compilerOptions": {
     "target": "es6",
-    "outDir": "./dist",
-    "rootDir": "./src",
+    "sourceMap": true,
 
     "strict": true,
     "noUnusedLocals": true,
@@ -11,6 +10,7 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
 
+    "moduleResolution": "node",
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   }
