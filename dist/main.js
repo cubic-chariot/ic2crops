@@ -1,3 +1,958 @@
+// Data from the crop that must be harvested from the source code
+class CropData {
+    constructor() {
+        this.name = "Unnamed Crop";
+        /* Seed item.
+         * If different from "",
+         * it indicates that the crop can be planted using that item,
+         * instead of having to be crossbred.
+         */
+        this.baseSeed = "";
+        /* When planted from a seed item (instead of a seed bag),
+         * the crop has some predetermined values for size, growth, gain, and resistance.
+         * These values are almost always 1, 1, 1, 1,
+         * but there are exceptions.
+         */
+        this.baseSize = 1;
+        this.baseGrowth = 1;
+        this.baseGain = 1;
+        this.baseResistance = 1;
+        /* Tier of the crop.
+         */
+        this.tier = 0;
+        /* Weighting of each of the three environmental values.
+         * These numbers may be fractional and negative and don't need to sum to 3.
+         */
+        this.humidityWeight = 1;
+        this.nutrientsWeight = 1;
+        this.airQualityWeight = 1;
+        /* The duration of each growth stage.
+         * Crops don't grow in the very last growth stage,
+         * so growthStages[growthStages.length-1] is assumed to be 0.
+         *
+         * In the code (and in most places providing documentation),
+         * the growth stages are indexed by 1,
+         * whereas this list is indexed by zero.
+         * So, for example,
+         * the growth stage durations for the essence berry would be [500, 3000, 3000, 0].
+         */
+        this.growthStages = [1000, 1000, 1000, 0];
+        /* The "gain factor" is the return value of CropCard.dropGainChance(),
+         * and is used to increase or decrease the average number of drops.
+         *
+         * May be above 1 (e.g. SaltyRoot's is 4).
+         * Defaults to 0.95 ** cropTier.
+         */
+        this.gainFactor = 1;
+        /* Growth stage that the crop goes to after harvest.
+         *
+         * Some crops (notably Stickreed) transition to some random stage except the last one;
+         * for these crops, this attribute reads 'random'.
+         *
+         * This field is "indexed by 1",
+         * so a value of 1 means the crop reverts to its very frist growth stage
+         * and the largest meaningful value is growthStages.length-1.
+         */
+        this.growthStageAfterHarvest = 1;
+        /* Growth stage at which the crop can be harvested.
+         */
+        this.minimumHarvestSize = 3;
+        this.attributeChemical = 0;
+        this.attributeFood = 0;
+        this.attributeDefensive = 0;
+        this.attributeColor = 0;
+        this.attributeWeed = 0;
+        this.attributes = [];
+        /* List of possible item drops,
+         * with corresponding weights.
+         *
+         * For each of the drops
+         * (the number of which is controlled by the gain factor)
+         * the crop can choose one ItemStack to drop.
+         * For example, IC2's melon crop has 33% of chance of returning a single melon block,
+         * and 66% of chance of returning between 2 and 5 melon slices
+         * (the latter choosen uniformly between the 4 possible values).
+         * These probabilities would be represented by the following list:
+         * [
+         *  [['Melon Block', 1], 1/3],
+         *  [['Melon Slice', 2], 2/3*1/4],
+         *  [['Melon Slice', 3], 2/3*1/4],
+         *  [['Melon Slice', 4], 2/3*1/4],
+         *  [['Melon Slice', 5], 2/3*1/4],
+         * ]
+         */
+        this.possibleDrops = [
+            [['drop', 1], 1],
+        ];
+    }
+    /* Enlarge or shrinks crop.growthStages so its length matches the given number.
+     * Newly created stages will be assigned the default duration of 1000.
+     */
+    static setNumberOfGrowthStages(crop, numberOfStages) {
+        let oldLength = crop.growthStages.length;
+        crop.growthStages.length = numberOfStages;
+        crop.growthStages[numberOfStages - 1] = 0;
+        for (let i = oldLength; i < numberOfStages - 1; i++) { // no-op if no stages were created
+            crop.growthStages[i] = 1000;
+        }
+    }
+    static defaultGainFactor(tier) {
+        return Math.pow(0.95, tier);
+    }
+    static registerCrop(crop) {
+        CropData.allCrops.set(crop.name, crop);
+    }
+}
+CropData.allCrops = new Map();
+/* Makes a crop with the default values.
+ */
+function makeDefaultCrop({ name = "Unnamed Crop", tier = 0, maxSize = 3 }) {
+    let growthStages = Array(maxSize).fill(tier * 200);
+    growthStages[maxSize - 1] = 0;
+    return Object.assign(Object.assign({}, new CropData()), { name,
+        tier,
+        growthStages, gainFactor: CropData.defaultGainFactor(tier) });
+}
+/* Utility to generate CropData for a Gregtech crop.
+ *
+ * In GT5-Unofficial's source code,
+ * the class which extends CropCard is defined in the file
+ *  src/main/java/gregtech/api/util/GT_BaseCrop.java,
+ * and the actual crop definitions are in the file
+ *  src/main/java/gregtech/loaders/postload/GT_CropLoader.java.
+ *
+ * One of the constructor arguments (`aGrowthSpeed`)
+ * is never used in the body of the constructor,
+ * so the corresponding member `mGrowthSpeed` is always 0.
+ * However, there are crops which define this value to be something nonzero,
+ * namely: Transformium, Eggplant, Meatrose, Milkwart, Spidernip, Trollplant,
+ * Starwart, Quantaria, and Stargatium.
+ * Technically they are intended to grow several times more slowly than they do now,
+ * but due to this bug this does not happen.
+ */
+function makeGTCrop({ name = "Unnamed Crop", tier = 0, maxSize = 3, growthStageAfterHarvest = 1, minimumHarvestSize = 1, attributeChemical = 1, attributeFood = 1, attributeDefensive = 0, attributeColor = 4, attributeWeed = 0, attributes = [], defaultDrop = "drop", specialDrops = [], }) {
+    let growthStages = Array(maxSize).fill(tier * 300);
+    growthStages[maxSize - 1] = 0;
+    let possibleDrops = [];
+    if (specialDrops.length === 0) {
+        possibleDrops = [[[defaultDrop, 1], 1]];
+    }
+    else {
+        let totalWeight = 2 * specialDrops.length + 2;
+        possibleDrops.push([[defaultDrop, 1], (2 + specialDrops.length) / totalWeight]);
+        for (let drop of specialDrops) {
+            possibleDrops.push([[drop, 1], 1 / totalWeight]);
+        }
+    }
+    return Object.assign(Object.assign({}, makeDefaultCrop({ name, tier, maxSize })), { growthStageAfterHarvest,
+        minimumHarvestSize,
+        attributeChemical,
+        attributeFood,
+        attributeDefensive,
+        attributeColor,
+        attributeWeed,
+        attributes,
+        possibleDrops });
+}
+CropData.registerCrop(makeGTCrop({
+    name: "Indigo",
+    tier: 2,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 1,
+    attributeChemical: 1,
+    attributeFood: 1,
+    attributeDefensive: 0,
+    attributeColor: 4,
+    attributeWeed: 0,
+    attributes: ["Flower", "Blue", "Ingredient"],
+    defaultDrop: "Indigo Blossom",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Flax",
+    tier: 2,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 1,
+    attributeFood: 1,
+    attributeDefensive: 2,
+    attributeColor: 0,
+    attributeWeed: 1,
+    attributes: ["Silk", "Tendrilly", "Adictive"],
+    defaultDrop: "String",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Oilberries",
+    tier: 9,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 6,
+    attributeFood: 1,
+    attributeDefensive: 2,
+    attributeColor: 1,
+    attributeWeed: 12,
+    attributes: ["Fire", "Dark", "Reed", "Rotten", "Coal", "Oil"],
+    defaultDrop: "Oil Berry",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Bobsyeruncleranks",
+    tier: 11,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 4,
+    attributeFood: 0,
+    attributeDefensive: 8,
+    attributeColor: 2,
+    attributeWeed: 9,
+    attributes: ["Shiny", "Tendrilly", "Emerald", "Berylium", "Crystal"],
+    defaultDrop: "Bobs-Yer-Uncle-Berry",
+    specialDrops: ["Emerald"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Diareed",
+    tier: 12,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 5,
+    attributeFood: 0,
+    attributeDefensive: 10,
+    attributeColor: 2,
+    attributeWeed: 10,
+    attributes: ["Fire", "Shiny", "Reed", "Coal", "Diamond", "Crystal"],
+    defaultDrop: "Diamond Dust",
+    specialDrops: ["Diamond"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Withereed",
+    tier: 8,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 2,
+    attributeFood: 0,
+    attributeDefensive: 4,
+    attributeColor: 1,
+    attributeWeed: 3,
+    attributes: ["Fire", "Undead", "Reed", "Coal", "Rotten", "Wither"],
+    defaultDrop: "Coal Dust",
+    specialDrops: ["Coal"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Blazereed",
+    tier: 6,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 0,
+    attributeFood: 4,
+    attributeDefensive: 1,
+    attributeColor: 0,
+    attributeWeed: 0,
+    attributes: ["Fire", "Blaze", "Reed", "Sulfur"],
+    defaultDrop: "Blaze Powder",
+    specialDrops: ["Blaze Rod"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Eggplant",
+    tier: 6,
+    maxSize: 3,
+    growthStageAfterHarvest: 2,
+    minimumHarvestSize: 3,
+    attributeChemical: 0,
+    attributeFood: 4,
+    attributeDefensive: 1,
+    attributeColor: 0,
+    attributeWeed: 0,
+    attributes: ["Chicken", "Egg", "Food", "Feather", "Flower", "Addictive"],
+    defaultDrop: "Egg",
+    specialDrops: ["Raw Chicken", "Feather", "Feather", "Feather"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Corium",
+    tier: 6,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 0,
+    attributeFood: 2,
+    attributeDefensive: 3,
+    attributeColor: 1,
+    attributeWeed: 0,
+    attributes: ["Cow", "Silk", "Tendrilly"],
+    defaultDrop: "Leather",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Corpseplant",
+    tier: 5,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 0,
+    attributeFood: 2,
+    attributeDefensive: 1,
+    attributeColor: 0,
+    attributeWeed: 3,
+    attributes: ["Toxic", "Undead", "Tendrilly", "Food", "Rotten"],
+    defaultDrop: "Rotten Flesh",
+    specialDrops: ["Bone Meal", "Bone Meal", "Bone"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Creeperweed",
+    tier: 7,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 3,
+    attributeFood: 0,
+    attributeDefensive: 5,
+    attributeColor: 1,
+    attributeWeed: 3,
+    attributes: ["Creeper", "Tendrilly", "Explosive", "Fire", "Sulfur", "Saltpeter", "Coal"],
+    defaultDrop: "Gunpowder",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Enderbloom",
+    tier: 10,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 5,
+    attributeFood: 0,
+    attributeDefensive: 2,
+    attributeColor: 1,
+    attributeWeed: 6,
+    attributes: ["Ender", "Flower", "Shiny"],
+    defaultDrop: "Enderpearl Dust",
+    specialDrops: ["Ender Pearl", "Ender Pearl", "Ender Eye"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Meatrose",
+    tier: 7,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 0,
+    attributeFood: 4,
+    attributeDefensive: 1,
+    attributeColor: 3,
+    attributeWeed: 0,
+    attributes: ["Food", "Flower", "Cow", "Fish", "Chicken", "Pig"],
+    defaultDrop: "Pink Dye",
+    specialDrops: ["Raw Beef", "Raw Porkchop", "Raw Chicken", "Raw Fish"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Milkwart",
+    tier: 6,
+    maxSize: 3,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 3,
+    attributeChemical: 0,
+    attributeFood: 3,
+    attributeDefensive: 0,
+    attributeColor: 1,
+    attributeWeed: 0,
+    attributes: ["Food", "Milk", "Cow"],
+    defaultDrop: "Milk Wart",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Slimeplant",
+    tier: 6,
+    maxSize: 4,
+    growthStageAfterHarvest: 3,
+    minimumHarvestSize: 4,
+    attributeChemical: 3,
+    attributeFood: 0,
+    attributeDefensive: 0,
+    attributeColor: 0,
+    attributeWeed: 2,
+    attributes: ["Slime", "Bouncy", "Sticky", "Bush"],
+    defaultDrop: "Slimeball",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Spidernip",
+    tier: 4,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 2,
+    attributeFood: 1,
+    attributeDefensive: 4,
+    attributeColor: 1,
+    attributeWeed: 3,
+    attributes: ["Toxic", "Silk", "Spider", "Flower", "Ingredient", "Addictive"],
+    defaultDrop: "String",
+    specialDrops: ["Spider Eye", "Cobweb"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Tearstalks",
+    tier: 8,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 1,
+    attributeFood: 2,
+    attributeDefensive: 0,
+    attributeColor: 0,
+    attributeWeed: 0,
+    attributes: ["Healing", "Nether", "Ingredient", "Reed", "Ghast"],
+    defaultDrop: "Ghast Tear",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Tine",
+    tier: 5,
+    maxSize: 3,
+    growthStageAfterHarvest: 2,
+    minimumHarvestSize: 3,
+    attributeChemical: 2,
+    attributeFood: 0,
+    attributeDefensive: 3,
+    attributeColor: 0,
+    attributeWeed: 0,
+    attributes: ["Shiny", "Metal", "Pine", "Tin", "Bush"],
+    defaultDrop: "Tine Twig",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Coppon",
+    tier: 6,
+    maxSize: 3,
+    growthStageAfterHarvest: 2,
+    minimumHarvestSize: 3,
+    attributeChemical: 2,
+    attributeFood: 0,
+    attributeDefensive: 1,
+    attributeColor: 1,
+    attributeWeed: 1,
+    attributes: ["Shiny", "Metal", "Cotton", "Copper", "Bush"],
+    defaultDrop: "Coppon Fiber",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Brown Mushrooms",
+    tier: 1,
+    maxSize: 3,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 3,
+    attributeChemical: 0,
+    attributeFood: 2,
+    attributeDefensive: 0,
+    attributeColor: 0,
+    attributeWeed: 2,
+    attributes: ["Food", "Mushroom", "Ingredient"],
+    defaultDrop: "Brown Mushroom", // The in-game name is just "Mushroom"
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Red Mushrooms",
+    tier: 1,
+    maxSize: 3,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 3,
+    attributeChemical: 0,
+    attributeFood: 1,
+    attributeDefensive: 3,
+    attributeColor: 0,
+    attributeWeed: 2,
+    attributes: ["Toxic", "Mushroom", "Ingredient"],
+    defaultDrop: "Red Mushroom", // The in-game name is just "Mushroom"
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Argentia",
+    tier: 7,
+    maxSize: 4,
+    growthStageAfterHarvest: 3,
+    minimumHarvestSize: 4,
+    attributeChemical: 2,
+    attributeFood: 0,
+    attributeDefensive: 1,
+    attributeColor: 0,
+    attributeWeed: 0,
+    attributes: ["Shiny", "Metal", "Silver", "Reed"],
+    defaultDrop: "Argentia Leaf",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Plumbilia",
+    tier: 6,
+    maxSize: 4,
+    growthStageAfterHarvest: 3,
+    minimumHarvestSize: 4,
+    attributeChemical: 2,
+    attributeFood: 0,
+    attributeDefensive: 3,
+    attributeColor: 1,
+    attributeWeed: 1,
+    attributes: ["Heavy", "Metal", "Lead", "Reed"],
+    defaultDrop: "Plumbilia Leaf",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Steeleafranks",
+    tier: 10,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 3,
+    attributeFood: 0,
+    attributeDefensive: 7,
+    attributeColor: 2,
+    attributeWeed: 8,
+    attributes: ["Metal", "Tendrilly", "Iron"],
+    defaultDrop: "Steeleaf Dust",
+    specialDrops: ["Steeleaf"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Liveroots",
+    tier: 8,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 2,
+    attributeFood: 0,
+    attributeDefensive: 5,
+    attributeColor: 2,
+    attributeWeed: 6,
+    attributes: ["Wood", "Tendrilly"],
+    defaultDrop: "Liveroot Dust",
+    specialDrops: ["Liveroot"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Trollplant",
+    tier: 6,
+    maxSize: 5,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 0,
+    attributeFood: 0,
+    attributeDefensive: 5,
+    attributeColor: 2,
+    attributeWeed: 8,
+    attributes: ["Troll", "Bad", "Scrap"],
+    defaultDrop: "Ruby (fake)",
+    specialDrops: ["Plantball", "Scrap", "Plutonium 241 Dust"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Lazulia",
+    tier: 7,
+    maxSize: 4,
+    growthStageAfterHarvest: 2,
+    minimumHarvestSize: 4,
+    attributeChemical: 4,
+    attributeFood: 2,
+    attributeDefensive: 5,
+    attributeColor: 7,
+    attributeWeed: 4,
+    attributes: ["Shiny", "Bad", "Crystal", "Lapis"],
+    defaultDrop: "Lapis Dust",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Glowheat",
+    tier: 10,
+    maxSize: 7,
+    growthStageAfterHarvest: 5,
+    minimumHarvestSize: 7,
+    attributeChemical: 3,
+    attributeFood: 3,
+    attributeDefensive: 3,
+    attributeColor: 5,
+    attributeWeed: 4,
+    attributes: ["Light", "Shiny", "Crystal"],
+    defaultDrop: "Glowstone Dust",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Fertilia",
+    tier: 3,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 2,
+    attributeFood: 3,
+    attributeDefensive: 5,
+    attributeColor: 4,
+    attributeWeed: 8,
+    attributes: ["Growth", "Healing", "Flower"],
+    defaultDrop: "Calcite Dust",
+    specialDrops: ["Fertilizer", "Apatite Dust", "Phosphate Dust"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Bauxia",
+    tier: 6,
+    maxSize: 3,
+    growthStageAfterHarvest: 2,
+    minimumHarvestSize: 3,
+    attributeChemical: 5,
+    attributeFood: 0,
+    attributeDefensive: 2,
+    attributeColor: 3,
+    attributeWeed: 3,
+    attributes: ["Metal", "Aluminium", "Reed", "Aluminium"],
+    defaultDrop: "Bauxia Leaf",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Titania",
+    tier: 9,
+    maxSize: 3,
+    growthStageAfterHarvest: 2,
+    minimumHarvestSize: 3,
+    attributeChemical: 5,
+    attributeFood: 0,
+    attributeDefensive: 3,
+    attributeColor: 3,
+    attributeWeed: 1,
+    attributes: ["Metal", "Heavy", "Reed", "Titanium"],
+    defaultDrop: "Titania Leaf",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Reactoria",
+    tier: 12,
+    maxSize: 4,
+    growthStageAfterHarvest: 2,
+    minimumHarvestSize: 4,
+    attributeChemical: 4,
+    attributeFood: 0,
+    attributeDefensive: 1,
+    attributeColor: 2,
+    attributeWeed: 1,
+    attributes: ["Radioactive", "Metal", "Danger", "Uranium"],
+    defaultDrop: "Reactoria Leaf",
+    specialDrops: ["Uranium Leaf"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "God of Thunder",
+    tier: 9,
+    maxSize: 4,
+    growthStageAfterHarvest: 2,
+    minimumHarvestSize: 4,
+    attributeChemical: 3,
+    attributeFood: 0,
+    attributeDefensive: 5,
+    attributeColor: 1,
+    attributeWeed: 2,
+    attributes: ["Radioactive", "Metal", "Coal", "Thorium"],
+    defaultDrop: "Thunder Leaf",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Transformium",
+    tier: 12,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 6,
+    attributeFood: 2,
+    attributeDefensive: 1,
+    attributeColor: 6,
+    attributeWeed: 1,
+    attributes: ["Transform", "Coal", "Reed"],
+    defaultDrop: "UUA Berry",
+    specialDrops: ["UUA Berry", "UUA Berry", "UUA Berry", "UUA Berry", "UUM Berry"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Starwart",
+    tier: 12,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 2,
+    attributeFood: 0,
+    attributeDefensive: 0,
+    attributeColor: 1,
+    attributeWeed: 0,
+    attributes: ["Wither", "Nether", "Undead", "Netherstar"],
+    defaultDrop: "Coal Dust",
+    specialDrops: [
+        "Coal",
+        "Skeleton Skull",
+        "Wither Skeleton Skull",
+        "Wither Skeleton Skull",
+        "Nether Star Dust"
+    ],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Zomplant",
+    tier: 3,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 1,
+    attributeFood: 3,
+    attributeDefensive: 4,
+    attributeColor: 2,
+    attributeWeed: 6,
+    attributes: ["Zombie", "Rotten", "Undead"],
+    defaultDrop: "Rotten Flesh",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Nickelback",
+    tier: 5,
+    maxSize: 3,
+    growthStageAfterHarvest: 2,
+    minimumHarvestSize: 3,
+    attributeChemical: 3,
+    attributeFood: 0,
+    attributeDefensive: 1,
+    attributeColor: 2,
+    attributeWeed: 2,
+    attributes: ["Metal", "Fire", "Alloy"],
+    defaultDrop: "Nickelback Leaf",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Galvania",
+    tier: 6,
+    maxSize: 3,
+    growthStageAfterHarvest: 2,
+    minimumHarvestSize: 3,
+    attributeChemical: 3,
+    attributeFood: 0,
+    attributeDefensive: 2,
+    attributeColor: 2,
+    attributeWeed: 3,
+    attributes: ["Metal", "Alloy", "Bush"],
+    defaultDrop: "Galvania Leaf",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Evil Ore",
+    tier: 8,
+    maxSize: 4,
+    growthStageAfterHarvest: 3,
+    minimumHarvestSize: 4,
+    attributeChemical: 4,
+    attributeFood: 0,
+    attributeDefensive: 2,
+    attributeColor: 1,
+    attributeWeed: 3,
+    attributes: ["Crystal", "Fire", "Nether"],
+    defaultDrop: "Nether Quartz Dust",
+    specialDrops: ["Nether Quartz", "Certus Quartz Dust"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Olivia",
+    tier: 2,
+    maxSize: 4,
+    growthStageAfterHarvest: 3,
+    minimumHarvestSize: 4,
+    attributeChemical: 1,
+    attributeFood: 0,
+    attributeDefensive: 1,
+    attributeColor: 4,
+    attributeWeed: 0,
+    attributes: ["Crystal", "Shiny", "Processing", "Olivine"],
+    defaultDrop: "Olivine Dust",
+    specialDrops: ["Olivine"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Sapphirum",
+    tier: 4,
+    maxSize: 4,
+    growthStageAfterHarvest: 3,
+    minimumHarvestSize: 4,
+    attributeChemical: 1,
+    attributeFood: 0,
+    attributeDefensive: 1,
+    attributeColor: 5,
+    attributeWeed: 0,
+    attributes: ["Crystal", "Shiny", "Metal", "Sapphire"],
+    defaultDrop: "Sapphire Dust",
+    specialDrops: ["Sapphire"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Pyrolusium",
+    tier: 12,
+    maxSize: 3,
+    growthStageAfterHarvest: 2,
+    minimumHarvestSize: 3,
+    attributeChemical: 1,
+    attributeFood: 0,
+    attributeDefensive: 1,
+    attributeColor: 1,
+    attributeWeed: 0,
+    attributes: ["Metal", "Clean", "Bush", "Manganese"],
+    defaultDrop: "Pyrolusium Leaf",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Scheelinium",
+    tier: 12,
+    maxSize: 3,
+    growthStageAfterHarvest: 2,
+    minimumHarvestSize: 3,
+    attributeChemical: 3,
+    attributeFood: 0,
+    attributeDefensive: 1,
+    attributeColor: 1,
+    attributeWeed: 0,
+    attributes: ["Metal", "Hard", "Bush", "Tungsten"],
+    defaultDrop: "Scheelinium Leaf",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Platina",
+    tier: 11,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 3,
+    attributeFood: 0,
+    attributeDefensive: 0,
+    attributeColor: 3,
+    attributeWeed: 0,
+    attributes: ["Metal", "Shiny", "Reed", "Platinum"],
+    defaultDrop: "Platina Leaf",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Quantaria",
+    tier: 12,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 4,
+    attributeFood: 0,
+    attributeDefensive: 0,
+    attributeColor: 1,
+    attributeWeed: 0,
+    attributes: ["Metal", "Iridium", "Reed"],
+    defaultDrop: "Quantaria Leaf (Iridium)",
+    specialDrops: ["Quantaria Leaf (Osmium)"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Stargatium",
+    tier: 12,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 4,
+    attributeFood: 0,
+    attributeDefensive: 0,
+    attributeColor: 2,
+    attributeWeed: 0,
+    attributes: ["Metal", "Heavy", "Alien", "Naquadah"],
+    defaultDrop: "Endstone Dust",
+    specialDrops: ["Stargatium Leaf"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Lemon",
+    tier: 4,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 1,
+    attributeFood: 1,
+    attributeDefensive: 0,
+    attributeColor: 2,
+    attributeWeed: 0,
+    attributes: ["Food", "Yellow", "Sour"],
+    defaultDrop: "Lemon",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Chilly",
+    tier: 4,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 1,
+    attributeFood: 1,
+    attributeDefensive: 0,
+    attributeColor: 2,
+    attributeWeed: 0,
+    attributes: ["Food", "Red", "Spicy"],
+    defaultDrop: "Chilly",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Tomato",
+    tier: 4,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 1,
+    attributeFood: 1,
+    attributeDefensive: 0,
+    attributeColor: 2,
+    attributeWeed: 0,
+    attributes: ["Food", "Red"],
+    defaultDrop: "Tomato",
+    specialDrops: ["Max Tomato"],
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Grape",
+    tier: 4,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 1,
+    attributeFood: 1,
+    attributeDefensive: 0,
+    attributeColor: 2,
+    attributeWeed: 0,
+    attributes: ["Food", "Purple"],
+    defaultDrop: "Grape",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Onion",
+    tier: 4,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 1,
+    attributeFood: 1,
+    attributeDefensive: 0,
+    attributeColor: 2,
+    attributeWeed: 0,
+    attributes: ["Food", "Brown"],
+    defaultDrop: "Onion",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Cucumber",
+    tier: 4,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 1,
+    attributeFood: 1,
+    attributeDefensive: 0,
+    attributeColor: 2,
+    attributeWeed: 0,
+    attributes: ["Food", "Green"],
+    defaultDrop: "Cucumber",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Tea",
+    tier: 4,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 1,
+    attributeFood: 1,
+    attributeDefensive: 0,
+    attributeColor: 2,
+    attributeWeed: 0,
+    attributes: ["Food", "Green", "Ingredient"],
+    defaultDrop: "Tea Leaf",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Rape",
+    tier: 4,
+    maxSize: 4,
+    growthStageAfterHarvest: 1,
+    minimumHarvestSize: 4,
+    attributeChemical: 1,
+    attributeFood: 1,
+    attributeDefensive: 0,
+    attributeColor: 2,
+    attributeWeed: 0,
+    attributes: ["Food", "Yellow", "Oil"],
+    defaultDrop: "Rape",
+}));
+CropData.registerCrop(makeGTCrop({
+    name: "Micadia",
+    tier: 9,
+    maxSize: 3,
+    growthStageAfterHarvest: 2,
+    minimumHarvestSize: 3,
+    attributeChemical: 2,
+    attributeFood: 0,
+    attributeDefensive: 3,
+    attributeColor: 0,
+    attributeWeed: 0,
+    attributes: ["Metal", "Pine", "Mica", "Bush"],
+    defaultDrop: "Micadia Twig",
+}));
+
 var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
 
 function getDefaultExportFromCjs (x) {
@@ -64669,22 +65624,33 @@ function mergeWeightLists(lists) {
     return Array.from(merge);
 }
 
+// The three crop stats
+class CropStats {
+    constructor() {
+        this.gain = 0;
+        this.growth = 0;
+        this.resistance = 0;
+    }
+}
+// Data from the biomes that must be harvested from the source code
+class BiomeData {
+    constructor() {
+        /* Biome-dependent humidity bonus; an integer between -10 and 10.
+         */
+        this.humidityBonus = 0;
+        /* Biome-dependent nutrient bonus; an integer between -10 and 10.
+         */
+        this.nutrientBonus = 0;
+    }
+}
 /* Stores all crop-related info that is unlikely to change
  * if the crop is being used to produce resources.
  */
 class StaticCropData {
     constructor() {
-        /* Tier of the crop.
-         */
-        this.cropTier = 0;
-        /* The three crop stats (growth, gain, resistance).
-         */
-        this.statGain = 0;
-        this.statGrowth = 0;
-        this.statResistance = 0;
-        /* Biome-dependent humidity bonus; an integer between -10 and 10.
-         */
-        this.biomeHumidityBonus = 0;
+        this.stat = new CropStats();
+        this.crop = new CropData();
+        this.biome = new BiomeData();
         /* Whether the crop sits atop hydrated farmland or not.
          *
          * IC2 crops can also be planted on Ztones' Garden Soil,
@@ -64701,9 +65667,6 @@ class StaticCropData {
          * and if it is false the water storage is always considered to be 0.
          */
         this.hydrated = false;
-        /* Biome-dependent nutrient bonus; an integer between -10 and 10.
-         */
-        this.biomeNutrientBonus = 0;
         /* Number of dirt blocks underneath the crop,
          * _ignoring_ the block immediately below it.
          * This number is always between 0 and 3.
@@ -64738,71 +65701,21 @@ class StaticCropData {
         /* Whether the block immediately above the crop can see the sky.
          */
         this.skyAccess = false;
-        /* Weighting of each of the three environmental values.
-         * These numbers may be fractional and negative and don't need to sum to 3.
-         */
-        this.humidityWeight = 1;
-        this.nutrientsWeight = 1;
-        this.airQualityWeight = 1;
-        /* The duration of each growth stage.
-         * Crops don't grow in the very last growth stage,
-         * so growthStages[growthStages.length-1] is assumed to be 0.
-         *
-         * In the code (and in most places providing documentation),
-         * the growth stages are indexed by 1,
-         * whereas this list is indexed by zero.
-         * So, for example,
-         * the growth stage durations for the essence berry would be [500, 3000, 3000, 0].
-         */
-        this.growthStages = [1000, 1000, 1000, 0];
-        /* The "gain factor" is the return value of CropCard.dropGainChance(),
-         * and is used to increase or decrease the average number of drops.
-         *
-         * May be above 1 (e.g. SaltyRoot's is 4).
-         * Defaults to 0.95 ** cropTier.
-         */
-        this.gainFactor = 1;
-        /* Growth stage that the crop goes to after harvest.
-         *
-         * Some crops (notably Stickreed) transition to some random stage except the last one;
-         * for these crops, this attribute reads 'random'.
-         *
-         * This field is "indexed by 1",
-         * so a value of 1 means the crop reverts to its very frist growth stage
-         * and the largest meaningful value is growthStages.length-1.
-         */
-        this.growthStageAfterHarvest = 1;
-    }
-    setDefaultGainFactor() {
-        this.gainFactor = Math.pow(0.95, this.cropTier);
-    }
-    /* Enlarge or shrinks this.growthStages so its length matches the given number.
-     * Newly created stages will be assigned the default duration of 1000.
-     */
-    setNumberOfGrowthStages(numberOfStages) {
-        let oldLength = this.growthStages.length;
-        this.growthStages.length = numberOfStages;
-        this.growthStages[numberOfStages - 1] = 0;
-        if (oldLength < numberOfStages) { // We added stages, must fill array
-            for (let i = oldLength; i < numberOfStages - 1; i++) {
-                this.growthStages[i] = 1000;
-            }
-        }
     }
     computeEnvironmentalNeeds() {
-        return 4 * (this.cropTier - 1) + this.statGrowth + this.statGain + this.statResistance;
+        return 4 * (this.crop.tier - 1) + this.stat.growth + this.stat.gain + this.stat.resistance;
     }
     computeHumidity() {
         let farmlandBonus = this.atopHydratedFarmland ? 2 : 0;
         let hydrationBonus = this.hydrated ? 10 : 0;
-        return this.biomeHumidityBonus + farmlandBonus + hydrationBonus;
+        return this.biome.humidityBonus + farmlandBonus + hydrationBonus;
     }
     /* The nutrient storage fluctuates over the lifetime of the crop,
      * so it cannot be considered as a constant.
      */
     computeNutrients(nutrientStorage) {
         let storageBonus = Math.ceil(nutrientStorage / 20);
-        return this.biomeNutrientBonus + this.dirtBlocksUnderneath + storageBonus;
+        return this.biome.nutrientBonus + this.dirtBlocksUnderneath + storageBonus;
     }
     computeAirQuality() {
         let heightBonus = Math.floor((this.yValue - 64) / 15);
@@ -64815,9 +65728,9 @@ class StaticCropData {
         return heightBonus + airBlocksBonus + skyAccessBonus;
     }
     computeEnvironmentalValue(nutrientStorage) {
-        return 5 * Math.floor(this.humidityWeight * this.computeHumidity() +
-            this.nutrientsWeight * this.computeNutrients(nutrientStorage) +
-            this.airQualityWeight * this.computeAirQuality());
+        return 5 * Math.floor(this.crop.humidityWeight * this.computeHumidity() +
+            this.crop.nutrientsWeight * this.computeNutrients(nutrientStorage) +
+            this.crop.airQualityWeight * this.computeAirQuality());
     }
     /* Computes a list of pairs [gainedPoints, probability]
      * which lists all the possibilities of growth points to be gained,
@@ -64833,7 +65746,7 @@ class StaticCropData {
         let envNeeds = this.computeEnvironmentalNeeds();
         let envValue = this.computeEnvironmentalValue(nutrientStorage);
         if (envNeeds - envValue > 25) {
-            if (this.statResistance == 31) {
+            if (this.stat.resistance == 31) {
                 // Crop does not die, but does not grow either
                 return [[0, 1]];
             }
@@ -64843,8 +65756,8 @@ class StaticCropData {
             }
         }
         let ret = [];
-        let baseMin = 3 + this.statGrowth;
-        let baseMax = 3 + 6 + this.statGrowth;
+        let baseMin = 3 + this.stat.growth;
+        let baseMax = 3 + 6 + this.stat.growth;
         for (let i = baseMin; i <= baseMax; i++) {
             let growth = Math.floor(i * (100 + envValue - envNeeds) / 100);
             ret.push([growth, 1 / 7]);
@@ -64911,33 +65824,33 @@ class StaticCropData {
         return expectedDuration[0];
     }
     computeExpectedTicksBetweenHarvests() {
-        let expectedTicks = new Array(this.growthStages.length - 1);
-        for (let i = 0; i < this.growthStages.length - 1; i++) {
+        let expectedTicks = new Array(this.crop.growthStages.length - 1);
+        for (let i = 0; i < this.crop.growthStages.length - 1; i++) {
             if (this.fertilized) {
-                expectedTicks[i] = StaticCropData.computeExpectedStepsInGrowthStage(this.growthStages[i], this.computeAverageGrowthPointsWithNutrition());
+                expectedTicks[i] = StaticCropData.computeExpectedStepsInGrowthStage(this.crop.growthStages[i], this.computeAverageGrowthPointsWithNutrition());
             }
             else {
-                expectedTicks[i] = StaticCropData.computeExpectedStepsInGrowthStage(this.growthStages[i], this.computeGainedGrowthPoints(0));
+                expectedTicks[i] = StaticCropData.computeExpectedStepsInGrowthStage(this.crop.growthStages[i], this.computeGainedGrowthPoints(0));
             }
         }
-        let expectancySum = new Array(this.growthStages.length);
-        expectancySum[this.growthStages.length - 1] = 0;
-        for (let i = this.growthStages.length - 2; i >= 0; i--) {
+        let expectancySum = new Array(this.crop.growthStages.length);
+        expectancySum[this.crop.growthStages.length - 1] = 0;
+        for (let i = this.crop.growthStages.length - 2; i >= 0; i--) {
             expectancySum[i] = expectancySum[i + 1] + expectedTicks[i];
         }
-        if (typeof (this.growthStageAfterHarvest) === 'number') {
-            return expectancySum[this.growthStageAfterHarvest - 1];
+        if (typeof (this.crop.growthStageAfterHarvest) === 'number') {
+            return expectancySum[this.crop.growthStageAfterHarvest - 1];
         }
         else {
             let sum = 0;
-            for (let i = 0; i < this.growthStages.length - 1; i++) {
+            for (let i = 0; i < this.crop.growthStages.length - 1; i++) {
                 sum += expectancySum[i];
             }
-            return sum / (this.growthStages.length - 1);
+            return sum / (this.crop.growthStages.length - 1);
         }
     }
     computeDropCountDistribution() {
-        let baseChance = this.gainFactor * Math.pow(1.03, this.statGain);
+        let baseChance = this.crop.gainFactor * Math.pow(1.03, this.stat.gain);
         /* The number of drops is calculated by the formula
          *  round(baseChance * (1 + 0.6827 * g))
          * where g is a random gaussian variable (mean=0, variance=1).
@@ -64965,15 +65878,43 @@ class StaticCropData {
         }
         return d;
     }
+    computeDropCountAverage() {
+        let distribution = this.computeDropCountDistribution();
+        let averageDrops = 0;
+        for (let [dropCount, probability] of distribution) {
+            averageDrops += dropCount * probability;
+        }
+        return averageDrops;
+    }
+    computeAverageItemsPerDrop() {
+        let averageItems = new Map();
+        for (let [[drop, count], probability] of this.crop.possibleDrops) {
+            /* If this drop is chosen,
+             * IC2 has a (this.statGain+1)/100 chance of increasing the stack size by 1
+             * before returning.
+             */
+            let partialAverage = (count + (this.stat.gain + 1) / 100) * probability;
+            if (averageItems.has(drop)) {
+                partialAverage += averageItems.get(drop);
+            }
+            averageItems.set(drop, partialAverage);
+        }
+        return Array.from(averageItems.entries());
+    }
+    computeAverageItemsPerHarvest() {
+        let averageDropCount = this.computeDropCountAverage();
+        return this.computeAverageItemsPerDrop().map(([drop, count]) => [drop, count * averageDropCount]);
+    }
 }
 
 class GrowthStageInput {
-    constructor(index, valueModificationCallback) {
+    constructor(index, startingValue, valueModificationCallback) {
         this.index = index;
         this.valueModificationCallback = valueModificationCallback;
         this.div = GrowthStageInput.template.cloneNode(true);
         this.indexDisplayDiv = this.div.querySelector('.growth-stage-index');
         this.stageInput = this.div.querySelector('input');
+        this.stageInput.value = "" + startingValue;
         this.indexDisplayDiv.textContent = "" + (this.index + 1);
         this.stageInput.addEventListener('input', (e) => {
             this.valueModificationCallback(e.target.valueAsNumber);
@@ -64983,12 +65924,15 @@ class GrowthStageInput {
     getDiv() {
         return this.div;
     }
+    // Changes the value displayed in the div invoking the callback
+    setVisualValue(newValue) {
+        this.stageInput.value = "" + newValue;
+    }
     hideDiv() {
         this.div.style['display'] = 'none';
     }
     showDiv() {
         this.div.style['display'] = '';
-        this.valueModificationCallback(this.stageInput.valueAsNumber);
     }
 }
 GrowthStageInput.template = document
@@ -64997,6 +65941,7 @@ GrowthStageInput.template = document
     .querySelector('div'); // I just want the div inside the template
 class UI {
     constructor() {
+        this.cropListSelection = document.getElementById('cropList');
         this.cropTierInput = document.getElementById('cropTier');
         this.statGainInput = document.getElementById('statGain');
         this.statGrowthInput = document.getElementById('statGrowth');
@@ -65031,23 +65976,26 @@ class UI {
         this.growthStagesExpectanciesDiv = document.getElementById('growth-stages-expectancies');
         this.expectedTicksBetweenHarvestsDiv = document.getElementById('expectedTicksBetweenHarvests');
         this.dropNumberDistributionDiv = document.getElementById('dropNumberDistribution');
+        this.dropsPerHarvestDiv = document.getElementById('dropsPerHarvest');
+        this.dropsPerHourDiv = document.getElementById('dropsPerHour');
         this.staticCropData = new StaticCropData();
+        this.initCropList();
         this.registerNumericAttributeCallback(this.cropTierInput, value => {
-            this.staticCropData.cropTier = value;
-            this.staticCropData.setDefaultGainFactor();
-            this.gainFactorInput.valueAsNumber = this.staticCropData.gainFactor;
+            this.staticCropData.crop.tier = value;
+            this.staticCropData.crop.gainFactor = CropData.defaultGainFactor(value);
+            this.gainFactorInput.valueAsNumber = this.staticCropData.crop.gainFactor;
         });
         this.registerNumericAttributeCallback(this.statGainInput, value => {
-            this.staticCropData.statGain = value;
+            this.staticCropData.stat.gain = value;
         });
         this.registerNumericAttributeCallback(this.statGrowthInput, value => {
-            this.staticCropData.statGrowth = value;
+            this.staticCropData.stat.growth = value;
         });
         this.registerNumericAttributeCallback(this.statResistanceInput, value => {
-            this.staticCropData.statResistance = value;
+            this.staticCropData.stat.resistance = value;
         });
         this.registerNumericAttributeCallback(this.biomeHumidityBonusInput, value => {
-            this.staticCropData.biomeHumidityBonus = value;
+            this.staticCropData.biome.humidityBonus = value;
         });
         this.registerBooleanAttributeCallback(this.hydratedInput, value => {
             this.staticCropData.hydrated = value;
@@ -65056,7 +66004,7 @@ class UI {
             this.staticCropData.atopHydratedFarmland = value;
         });
         this.registerNumericAttributeCallback(this.biomeNutrientBonusInput, value => {
-            this.staticCropData.biomeNutrientBonus = value;
+            this.staticCropData.biome.nutrientBonus = value;
         });
         this.registerNumericAttributeCallback(this.dirtBlocksUnderneathInput, value => {
             this.staticCropData.dirtBlocksUnderneath = value;
@@ -65077,38 +66025,81 @@ class UI {
             this.staticCropData.skyAccess = value;
         });
         this.registerNumericAttributeCallback(this.humidityWeightInput, value => {
-            this.staticCropData.humidityWeight = value;
+            this.staticCropData.crop.humidityWeight = value;
         });
         this.registerNumericAttributeCallback(this.nutrientsWeightInput, value => {
-            this.staticCropData.nutrientsWeight = value;
+            this.staticCropData.crop.nutrientsWeight = value;
         });
         this.registerNumericAttributeCallback(this.airQualityWeightInput, value => {
-            this.staticCropData.airQualityWeight = value;
+            this.staticCropData.crop.airQualityWeight = value;
         });
         this.registerNumericAttributeCallback(this.numberOfGrowthStagesInput, newNumber => {
             // Custom behavior for growth stages
             this.setNumberOfGrowthStages(newNumber);
         });
         this.registerNumericAttributeCallback(this.growthStageAfterHarvestInput, newStage => {
-            this.staticCropData.growthStageAfterHarvest = newStage;
+            this.staticCropData.crop.growthStageAfterHarvest = newStage;
         });
         this.registerBooleanAttributeCallback(this.randomGrowthStageAfterHarvestInput, random => {
             if (random) {
-                this.staticCropData.growthStageAfterHarvest = 'random';
+                this.staticCropData.crop.growthStageAfterHarvest = 'random';
                 this.growthStageAfterHarvestInput.required = false;
                 this.growthStageAfterHarvestInput.disabled = true;
             }
             else {
-                this.staticCropData.growthStageAfterHarvest = this.growthStageAfterHarvestInput.valueAsNumber;
+                this.staticCropData.crop.growthStageAfterHarvest = this.growthStageAfterHarvestInput.valueAsNumber;
                 this.growthStageAfterHarvestInput.required = true;
                 this.growthStageAfterHarvestInput.disabled = false;
             }
+        });
+        this.registerNumericAttributeCallback(this.gainFactorInput, value => {
+            this.staticCropData.crop.gainFactor = value;
         });
         /* The this.register functions call the callback with the current values upon registering,
          * but it only calls updateCropData if the value modifies.
          * So we call it once after all values get updated.
          */
         this.updateCropData();
+    }
+    initCropList() {
+        this.cropListSelection.innerHTML = "";
+        for (let key of CropData.allCrops.keys()) {
+            let option = document.createElement('option');
+            option.textContent = key;
+            this.cropListSelection.appendChild(option);
+        }
+        this.cropListSelection.addEventListener('change', (e) => {
+            let cropName = e.target.value;
+            let crop = CropData.allCrops.get(cropName);
+            if (crop === undefined) {
+                console.log(`Error: cannot find crop ${cropName}`);
+                return;
+            }
+            this.staticCropData.crop = JSON.parse(JSON.stringify(crop)); // Quick deep clone
+            this.cropTierInput.value = "" + crop.tier;
+            this.humidityWeightInput.value = "" + crop.humidityWeight;
+            this.nutrientsWeightInput.value = "" + crop.nutrientsWeight;
+            this.airQualityWeightInput.value = "" + crop.airQualityWeight;
+            this.numberOfGrowthStagesInput.value = "" + crop.growthStages.length;
+            this.setNumberOfGrowthStages(crop.growthStages.length);
+            for (let i = 0; i < crop.growthStages.length - 1; i++) {
+                this.growthStageInputs[i].setVisualValue(crop.growthStages[i]);
+            }
+            if (crop.growthStageAfterHarvest === 'random') {
+                this.growthStageAfterHarvestInput.required = false;
+                this.growthStageAfterHarvestInput.disabled = true;
+                this.randomGrowthStageAfterHarvestInput.checked = true;
+                this.growthStageAfterHarvestInput.value = "1"; // Dummy value
+            }
+            else {
+                this.growthStageAfterHarvestInput.required = true;
+                this.growthStageAfterHarvestInput.disabled = false;
+                this.randomGrowthStageAfterHarvestInput.checked = false;
+                this.growthStageAfterHarvestInput.value = "" + crop.growthStageAfterHarvest;
+            }
+            this.gainFactorInput.value = "" + crop.gainFactor;
+            this.updateCropData();
+        });
     }
     registerNumericAttributeCallback(element, callback) {
         element.addEventListener('input', (e) => {
@@ -65130,11 +66121,12 @@ class UI {
     setNumberOfGrowthStages(newNumber) {
         if (!(newNumber > 0))
             return;
-        this.staticCropData.setNumberOfGrowthStages(newNumber);
+        CropData.setNumberOfGrowthStages(this.staticCropData.crop, newNumber);
         while (this.growthStageInputs.length < newNumber - 1) {
             let index = this.growthStageInputs.length;
-            let newGrowthStageInput = new GrowthStageInput(index, (value) => {
-                this.staticCropData.growthStages[index] = value;
+            let startingValue = this.staticCropData.crop.growthStages[index];
+            let newGrowthStageInput = new GrowthStageInput(index, startingValue, (value) => {
+                this.staticCropData.crop.growthStages[index] = value;
                 this.updateCropData();
             });
             this.growthStageInputs.push(newGrowthStageInput);
@@ -65160,6 +66152,7 @@ class UI {
         this.expectedTicksBetweenHarvestsDiv.textContent =
             this.staticCropData.computeExpectedTicksBetweenHarvests().toFixed(2) + " ticks";
         this.updateDropNumberDistribution();
+        this.updateDropsPerPeriod();
     }
     updateGrowthPointsProbabilities() {
         let growthPoints;
@@ -65199,8 +66192,8 @@ class UI {
         }
         else {
             this.growthStagesExpectanciesDiv.textContent = "";
-            for (let i = 0; i < this.staticCropData.growthStages.length - 1; i++) {
-                let expectancy = StaticCropData.computeExpectedStepsInGrowthStage(this.staticCropData.growthStages[i], growthPoints);
+            for (let i = 0; i < this.staticCropData.crop.growthStages.length - 1; i++) {
+                let expectancy = StaticCropData.computeExpectedStepsInGrowthStage(this.staticCropData.crop.growthStages[i], growthPoints);
                 let e = expectancy.toFixed(2);
                 this.growthStagesExpectanciesDiv.textContent += `[${i}: ${e} steps] `;
             }
@@ -65210,8 +66203,27 @@ class UI {
         this.dropNumberDistributionDiv.textContent = "";
         let distribution = this.staticCropData.computeDropCountDistribution();
         for (let [value, probability] of distribution) {
-            let p = (100 * probability).toFixed(3);
-            this.dropNumberDistributionDiv.textContent += `[${value}: ${p}%] `;
+            let p;
+            if (probability >= 1e-3) {
+                p = (100 * probability).toFixed(3) + '%';
+            }
+            else {
+                p = probability.toExponential(3);
+            }
+            this.dropNumberDistributionDiv.textContent += `[${value}: ${p}] `;
+        }
+    }
+    updateDropsPerPeriod() {
+        this.dropsPerHarvestDiv.textContent = "";
+        this.dropsPerHourDiv.textContent = "";
+        let averageDropsPerHarvest = this.staticCropData.computeAverageItemsPerHarvest();
+        let meanTimeBetweenHarvests = this.staticCropData.computeExpectedTicksBetweenHarvests();
+        for (let [item, count] of averageDropsPerHarvest) {
+            let c = count.toFixed(4);
+            this.dropsPerHarvestDiv.textContent += `[${item}: ${c}] `;
+            let perHour = count / meanTimeBetweenHarvests / 12.8 * 3600;
+            let h = perHour.toFixed(4);
+            this.dropsPerHourDiv.textContent += `[${item}: ${h}] `;
         }
     }
 }

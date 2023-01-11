@@ -1,4 +1,5 @@
-import { StaticCropData } from './CropData.js';
+import { CropData } from './CropData.js';
+import { StaticCropData } from './CropMath.js';
 
 class GrowthStageInput {
     private static template = document
@@ -11,7 +12,7 @@ class GrowthStageInput {
     private indexDisplayDiv: HTMLDivElement;
     private stageInput: HTMLInputElement;
 
-    constructor(index: number, valueModificationCallback: (value: number) => void) {
+    constructor(index: number, startingValue: number, valueModificationCallback: (value: number) => void) {
         this.index = index;
         this.valueModificationCallback = valueModificationCallback;
 
@@ -19,6 +20,7 @@ class GrowthStageInput {
         this.indexDisplayDiv = this.div.querySelector('.growth-stage-index') as HTMLDivElement;
         this.stageInput = this.div.querySelector('input') as HTMLInputElement;
 
+        this.stageInput.value = "" + startingValue;
         this.indexDisplayDiv.textContent = "" + (this.index+1);
         this.stageInput.addEventListener('input', (e: Event) => {
             this.valueModificationCallback((e.target as HTMLInputElement).valueAsNumber);
@@ -30,18 +32,23 @@ class GrowthStageInput {
         return this.div;
     }
 
+    // Changes the value displayed in the div invoking the callback
+    setVisualValue(newValue: number) {
+        this.stageInput.value = "" + newValue;
+    }
+
     hideDiv() {
         this.div.style['display'] = 'none';
     }
 
     showDiv() {
         this.div.style['display'] = '';
-        this.valueModificationCallback(this.stageInput.valueAsNumber);
     }
 }
 
 export class UI {
     static instance = new UI();
+    private cropListSelection = document.getElementById('cropList') as HTMLSelectElement;
     private cropTierInput = document.getElementById('cropTier') as HTMLInputElement;
     private statGainInput = document.getElementById('statGain') as HTMLInputElement;
     private statGrowthInput = document.getElementById('statGrowth') as HTMLInputElement;
@@ -84,29 +91,34 @@ export class UI {
     private expectedTicksBetweenHarvestsDiv = document.getElementById('expectedTicksBetweenHarvests') as HTMLDivElement;
     private dropNumberDistributionDiv = document.getElementById('dropNumberDistribution') as HTMLDivElement;
 
+    private dropsPerHarvestDiv = document.getElementById('dropsPerHarvest') as HTMLDivElement;
+    private dropsPerHourDiv = document.getElementById('dropsPerHour') as HTMLDivElement;
+
     private staticCropData = new StaticCropData();
 
     private constructor() {
+        this.initCropList();
+
         this.registerNumericAttributeCallback(this.cropTierInput, value => {
-            this.staticCropData.cropTier = value;
-            this.staticCropData.setDefaultGainFactor();
-            this.gainFactorInput.valueAsNumber = this.staticCropData.gainFactor;
+            this.staticCropData.crop.tier = value;
+            this.staticCropData.crop.gainFactor = CropData.defaultGainFactor(value);
+            this.gainFactorInput.valueAsNumber = this.staticCropData.crop.gainFactor;
         });
 
         this.registerNumericAttributeCallback(this.statGainInput, value => {
-            this.staticCropData.statGain = value;
+            this.staticCropData.stat.gain = value;
         });
 
         this.registerNumericAttributeCallback(this.statGrowthInput, value => {
-            this.staticCropData.statGrowth = value;
+            this.staticCropData.stat.growth = value;
         });
 
         this.registerNumericAttributeCallback(this.statResistanceInput, value => {
-            this.staticCropData.statResistance = value;
+            this.staticCropData.stat.resistance = value;
         });
 
         this.registerNumericAttributeCallback(this.biomeHumidityBonusInput, value => {
-            this.staticCropData.biomeHumidityBonus = value;
+            this.staticCropData.biome.humidityBonus = value;
         });
 
         this.registerBooleanAttributeCallback(this.hydratedInput, value => {
@@ -118,7 +130,7 @@ export class UI {
         });
 
         this.registerNumericAttributeCallback(this.biomeNutrientBonusInput, value => {
-            this.staticCropData.biomeNutrientBonus = value;
+            this.staticCropData.biome.nutrientBonus = value;
         });
 
         this.registerNumericAttributeCallback(this.dirtBlocksUnderneathInput, value => {
@@ -146,15 +158,15 @@ export class UI {
         });
 
         this.registerNumericAttributeCallback(this.humidityWeightInput, value => {
-            this.staticCropData.humidityWeight = value;
+            this.staticCropData.crop.humidityWeight = value;
         });
 
         this.registerNumericAttributeCallback(this.nutrientsWeightInput, value => {
-            this.staticCropData.nutrientsWeight = value;
+            this.staticCropData.crop.nutrientsWeight = value;
         });
 
         this.registerNumericAttributeCallback(this.airQualityWeightInput, value => {
-            this.staticCropData.airQualityWeight = value;
+            this.staticCropData.crop.airQualityWeight = value;
         });
 
         this.registerNumericAttributeCallback(this.numberOfGrowthStagesInput, newNumber => {
@@ -163,19 +175,23 @@ export class UI {
         });
 
         this.registerNumericAttributeCallback(this.growthStageAfterHarvestInput, newStage => {
-            this.staticCropData.growthStageAfterHarvest = newStage;
+            this.staticCropData.crop.growthStageAfterHarvest = newStage;
         })
 
         this.registerBooleanAttributeCallback(this.randomGrowthStageAfterHarvestInput, random => {
             if(random) {
-                this.staticCropData.growthStageAfterHarvest = 'random';
+                this.staticCropData.crop.growthStageAfterHarvest = 'random';
                 this.growthStageAfterHarvestInput.required = false;
                 this.growthStageAfterHarvestInput.disabled = true;
             } else {
-                this.staticCropData.growthStageAfterHarvest = this.growthStageAfterHarvestInput.valueAsNumber;
+                this.staticCropData.crop.growthStageAfterHarvest = this.growthStageAfterHarvestInput.valueAsNumber;
                 this.growthStageAfterHarvestInput.required = true;
                 this.growthStageAfterHarvestInput.disabled = false;
             }
+        })
+
+        this.registerNumericAttributeCallback(this.gainFactorInput, value => {
+            this.staticCropData.crop.gainFactor = value;
         })
 
         /* The this.register functions call the callback with the current values upon registering,
@@ -183,6 +199,51 @@ export class UI {
          * So we call it once after all values get updated.
          */
         this.updateCropData();
+    }
+
+    private initCropList() {
+        this.cropListSelection.innerHTML = "";
+        for(let key of CropData.allCrops.keys()) {
+            let option = document.createElement('option');
+            option.textContent = key;
+            this.cropListSelection.appendChild(option);
+        }
+        this.cropListSelection.addEventListener('change', (e: Event) => {
+            let cropName = (e.target as HTMLSelectElement).value;
+            let crop = CropData.allCrops.get(cropName);
+            if(crop === undefined) {
+                console.log(`Error: cannot find crop ${cropName}`);
+                return;
+            }
+
+            this.staticCropData.crop = JSON.parse(JSON.stringify(crop)); // Quick deep clone
+            this.cropTierInput.value = "" + crop.tier;
+            this.humidityWeightInput.value = "" + crop.humidityWeight;
+            this.nutrientsWeightInput.value = "" + crop.nutrientsWeight;
+            this.airQualityWeightInput.value = "" + crop.airQualityWeight;
+
+            this.numberOfGrowthStagesInput.value = "" + crop.growthStages.length;
+            this.setNumberOfGrowthStages(crop.growthStages.length);
+            for(let i = 0; i < crop.growthStages.length - 1; i++) {
+                this.growthStageInputs[i]!.setVisualValue(crop.growthStages[i]!);
+            }
+
+            if(crop.growthStageAfterHarvest === 'random') {
+                this.growthStageAfterHarvestInput.required = false;
+                this.growthStageAfterHarvestInput.disabled = true;
+                this.randomGrowthStageAfterHarvestInput.checked = true;
+                this.growthStageAfterHarvestInput.value = "1"; // Dummy value
+            } else {
+                this.growthStageAfterHarvestInput.required = true;
+                this.growthStageAfterHarvestInput.disabled = false;
+                this.randomGrowthStageAfterHarvestInput.checked = false;
+                this.growthStageAfterHarvestInput.value = "" + crop.growthStageAfterHarvest;
+            }
+
+            this.gainFactorInput.value = "" + crop.gainFactor;
+
+            this.updateCropData();
+        });
     }
 
     private registerNumericAttributeCallback(element: HTMLInputElement, callback: (value: number) => void) {
@@ -206,11 +267,12 @@ export class UI {
 
     private setNumberOfGrowthStages(newNumber: number) {
         if(!(newNumber > 0)) return;
-        this.staticCropData.setNumberOfGrowthStages(newNumber);
+        CropData.setNumberOfGrowthStages(this.staticCropData.crop, newNumber);
         while(this.growthStageInputs.length < newNumber-1) {
             let index = this.growthStageInputs.length;
-            let newGrowthStageInput = new GrowthStageInput(index, (value: number) => {
-                this.staticCropData.growthStages[index] = value;
+            let startingValue = this.staticCropData.crop.growthStages[index]!;
+            let newGrowthStageInput = new GrowthStageInput(index, startingValue, (value: number) => {
+                this.staticCropData.crop.growthStages[index] = value;
                 this.updateCropData();
             });
             this.growthStageInputs.push(newGrowthStageInput);
@@ -241,6 +303,7 @@ export class UI {
             this.staticCropData.computeExpectedTicksBetweenHarvests().toFixed(2) + " ticks";
 
         this.updateDropNumberDistribution();
+        this.updateDropsPerPeriod();
     }
 
     updateGrowthPointsProbabilities() {
@@ -280,9 +343,9 @@ export class UI {
                 "Not enough environmental resources, the crop will die in the long run.";
         } else {
             this.growthStagesExpectanciesDiv.textContent = "";
-            for(let i = 0; i < this.staticCropData.growthStages.length - 1; i++) {
+            for(let i = 0; i < this.staticCropData.crop.growthStages.length - 1; i++) {
                 let expectancy = StaticCropData.computeExpectedStepsInGrowthStage(
-                        this.staticCropData.growthStages[i]!, growthPoints
+                        this.staticCropData.crop.growthStages[i]!, growthPoints
                 );
                 let e = expectancy.toFixed(2);
                 this.growthStagesExpectanciesDiv.textContent += `[${i}: ${e} steps] `;
@@ -294,8 +357,27 @@ export class UI {
         this.dropNumberDistributionDiv.textContent = "";
         let distribution = this.staticCropData.computeDropCountDistribution();
         for(let [value, probability] of distribution) {
-            let p = (100 * probability).toFixed(3);
-            this.dropNumberDistributionDiv.textContent += `[${value}: ${p}%] `;
+            let p;
+            if(probability >= 1e-3) {
+                p = (100 * probability).toFixed(3) + '%';
+            } else {
+                p = probability.toExponential(3);
+            }
+            this.dropNumberDistributionDiv.textContent += `[${value}: ${p}] `;
+        }
+    }
+
+    updateDropsPerPeriod() {
+        this.dropsPerHarvestDiv.textContent = "";
+        this.dropsPerHourDiv.textContent = "";
+        let averageDropsPerHarvest = this.staticCropData.computeAverageItemsPerHarvest();
+        let meanTimeBetweenHarvests = this.staticCropData.computeExpectedTicksBetweenHarvests();
+        for(let [item, count] of averageDropsPerHarvest) {
+            let c = count.toFixed(4);
+            this.dropsPerHarvestDiv.textContent += `[${item}: ${c}] `;
+            let perHour = count / meanTimeBetweenHarvests / 12.8 * 3600;
+            let h = perHour.toFixed(4);
+            this.dropsPerHourDiv.textContent += `[${item}: ${h}] `;
         }
     }
 }
