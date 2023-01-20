@@ -52,7 +52,7 @@ CropData.registerCrop({
 
 CropData.registerCrop({
     ...makeDefaultCrop({
-        name: "Brown Mushroom",
+        name: "Brown Mushroom (IC2)",
         tier: 2,
         maxSize: 3,
     }),
@@ -287,7 +287,7 @@ CropData.registerCrop({
     ...cropPotato,
     variantOf: cropPotato,
     name: "Potato (early harvest)",
-    growthStages: makeDefaultCrop({maxSize: 3}).growthStages,
+    growthStages: makeDefaultCrop({tier: 2, maxSize: 3}).growthStages,
     possibleDrops: [[["Potato", 1], 1]],
 });
 
@@ -315,7 +315,7 @@ CropData.registerCrop({
 
 CropData.registerCrop({
     ...makeDefaultCrop({
-        name: "Red Mushroom",
+        name: "Red Mushroom (IC2)",
         tier: 2,
         maxSize: 3,
     }),
@@ -505,7 +505,7 @@ CropData.registerCrop({
 
 CropData.registerCrop({
     ...makeDefaultCrop({
-        name: "Redwheat",
+        name: "Wheat",
         tier: 1,
         maxSize: 7,
     }),

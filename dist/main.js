@@ -199,6 +199,276 @@ function makeIC2FlowerCrop({ name = "", attributes = [], drop = "", }) {
         maxSize: 4,
     })), { attributeChemical: 1, attributeFood: 1, attributeDefensive: 0, attributeColor: 5, attributeWeed: 1, attributes, minimumHarvestSize: 4, possibleDrops: [[[drop, 1], 1]], growthStageAfterHarvest: 3, growthStages: [400, 400, 600, 0] });
 }
+function makeCppBasicCrop({ name = "Unnamed Crop", tier = 0, maxSize = 3, }) {
+    let berryGain = 1; // Config value: berriespp.cfg > gain > D:"All crops"
+    return Object.assign(Object.assign({}, makeDefaultCrop({ name, tier, maxSize })), { gainFactor: makeDefaultCrop({ tier }).gainFactor * berryGain, minimumCrossSize: maxSize, minimumHarvestSize: maxSize });
+}
+function makeCppBasicBerryCrop({ name = "Unnamed Crop", tier = 2, // Default tier is 2
+maxSize = 3, // Default maxSize is 3
+ }) {
+    return Object.assign(Object.assign({}, makeDefaultCrop({ name, tier, maxSize })), { attributeChemical: 0, attributeFood: 1, attributeDefensive: 0, attributeColor: 5, attributeWeed: 0, humidityWeight: 1.2, nutrientsWeight: 0.9, airQualityWeight: 0.9, growthStages: [700, 200, 0], growthStageAfterHarvest: 2 });
+}
+function makeCppBasicDecorationCrop({ name = "Unnamed Crop", tier = 1, // Default tier is 1
+maxSize = 3, // Default maxSize is 3, inherited from BasicBerryCrop
+ }) {
+    let growthStages = Array(maxSize).fill(225);
+    growthStages[maxSize - 1] = 0;
+    return Object.assign(Object.assign({}, makeCppBasicBerryCrop({ name, tier, maxSize })), { attributeChemical: 0, attributeFood: 0, attributeDefensive: 0, attributeColor: 4, attributeWeed: 0, growthStages, growthStageAfterHarvest: 1 });
+}
+function makeCppBasicFoodCrop({ name = "Unnamed Crop", tier = 2, // Default tier is 2
+maxSize = 3, // Default maxSize is 3,
+ }) {
+    return Object.assign(Object.assign({}, makeCppBasicDecorationCrop({ name, tier, maxSize })), { attributeChemical: 0, attributeFood: 4, attributeDefensive: 0, attributeColor: 0, attributeWeed: 2, minimumHarvestSize: 3, growthStageAfterHarvest: 1 });
+}
+function makeCppBasicTinkerBerryCrop({ name = "Unnamed Crop", tier = 5, // Default tier is 5
+maxSize = 4, // Default maxSize is 4,
+ }) {
+    let tcBerryGain = 1; // Config value: berriespp.cfg > gain > D:"Tinker's Construct berries"
+    let gainFactor = Math.pow(0.95, tier) * tcBerryGain;
+    return Object.assign(Object.assign({}, makeCppBasicCrop({
+        name,
+        tier,
+        maxSize,
+    })), { gainFactor, attributeChemical: 3, attributeFood: 0, attributeDefensive: 4, attributeColor: 1, attributeWeed: 0, minimumHarvestSize: 3, humidityWeight: 0.5, nutrientsWeight: 1.5, airQualityWeight: 1.0, growthStageAfterHarvest: 2 });
+}
+
+// Config value: berriespp.cfg > gain > I:"Primordial Berry growth time"
+let primordialBerryGrowth = 125000;
+// Config value: berriespp.cfg > gain > D:"Primordial Berry"
+let primordialBerryGain = 0.5;
+let cropPrimordialPearl = Object.assign(Object.assign({}, makeCppBasicCrop({
+    name: "Primordial Berry",
+    tier: 16,
+    maxSize: 4,
+})), { attributeChemical: 0, attributeFood: 0, attributeDefensive: 0, attributeColor: 12, attributeWeed: 0, minimumHarvestSize: 4, humidityWeight: 2.0, nutrientsWeight: 2.0, airQualityWeight: 2.0, growthStages: [primordialBerryGrowth, primordialBerryGrowth, primordialBerryGrowth, 0], gainFactor: primordialBerryGain, growthStageAfterHarvest: 1, minimumCrossSize: 'never', possibleDrops: [[['Primordial Pearl', 1], 1]], attributes: ["Berry", "Primordial", "Magic", "Unique"] });
+CropData.registerCrop(cropPrimordialPearl);
+
+/* Ardite berries drop one ardite nugget regardless of when it is harvested.
+ */
+let cropArditeBerry = Object.assign(Object.assign({}, makeCppBasicTinkerBerryCrop({
+    name: "Ardite Berry",
+    tier: 7,
+})), { foundationBlock: "Ardite Block", possibleDrops: [[['Ardite Nugget', 1], 1]], growthStages: [500, 3000, 3000, 0], attributes: ["OreBerry", "Ardite", "Metal", "Orange"] });
+CropData.registerCrop(cropArditeBerry);
+CropData.registerCrop(Object.assign(Object.assign({}, cropArditeBerry), { variantOf: cropArditeBerry, name: "Ardite Berry (early harvest)", possibleDrops: [[['Ardite Nugget', 1], 1]], growthStages: [500, 3000, 0] }));
+/* Bonsais are created in src/main/java/com/github/bartimaeusnek/cropspp/crops/cpp/Bonsais.java.
+ * There's also code for a generic bonsai generator
+ * (in src/main/java/com/github/bartimaeusnek/cropspp/crops/cpp/tree/)
+ * but this code is unused at the moment.
+ */
+function makeBonsai({ treeName = "Unnamed Tree", tier = 1, // All tiers are the same
+attributes = ["Tree", "Bonsai", "Leavy"], drops = [], // defaults to ['Log Name', 'Sapling Name']; first must be the wood
+chances = [80, 30], // Value from the code
+ }) {
+    if (drops.length == 0)
+        drops = [`${treeName} Wood`, `${treeName} Sapling`];
+    chances.push(0); // Sentinel value
+    let baseDrops = drops.map((drop, i) => [[drop, 1], (chances[i] - chances[i + 1]) / Math.max(...chances)]);
+    baseDrops[0][0][1] = 10; // baseDrops[0] is the log type; the base count is 10
+    let possibleDrops = [];
+    for (let [[dropName, dropCount], dropProbability] of baseDrops) {
+        const moreorless = 4;
+        possibleDrops.push([[dropName, dropCount], dropProbability / 4]);
+        for (let i = 0; i < moreorless; i++) {
+            possibleDrops.push([[dropName, dropCount + i], dropProbability / 2 / moreorless]);
+        }
+        for (let i = 0; i < moreorless; i++) {
+            if (dropCount - i >= 0) {
+                possibleDrops.push([[dropName, dropCount - i], dropProbability / 4 / moreorless]);
+            }
+        }
+    }
+    let maxSize = 3;
+    let growthStages = makeCppBasicCrop({ tier, maxSize }).growthStages.map(s => 3 * s);
+    return Object.assign(Object.assign({}, makeCppBasicCrop({ name: `${treeName} Bonsai`, tier, maxSize })), { attributeChemical: 0, attributeFood: 0, attributeDefensive: 0, attributeColor: 1, attributeWeed: 0, attributes,
+        possibleDrops,
+        growthStages });
+}
+CropData.registerCrop(makeBonsai({
+    treeName: "Oak",
+    attributes: ["Tree", "Bonsai", "Leavy", "Food"],
+    drops: ['Oak Wood', 'Oak Sapling', 'Apple'],
+    chances: [100, 50, 10],
+}));
+CropData.registerCrop(makeBonsai({ treeName: "Spruce" }));
+CropData.registerCrop(makeBonsai({ treeName: "Birch" }));
+CropData.registerCrop(makeBonsai({ treeName: "Jungle" }));
+CropData.registerCrop(makeBonsai({ treeName: "Acacia" }));
+CropData.registerCrop(makeBonsai({ treeName: "Dark Oak" }));
+let cactusCrop = Object.assign(Object.assign({}, makeCppBasicDecorationCrop({
+    name: "Cactus",
+    tier: 3,
+})), { attributes: ["Green", "Cactus"], possibleDrops: [[["Cactus", 1], 1]], minimumHarvestSize: 2, humidityWeight: 0.5, nutrientsWeight: 1.25, airQualityWeight: 1.25 });
+CropData.registerCrop(cactusCrop);
+CropData.registerCrop(Object.assign(Object.assign({}, cactusCrop), { variantOf: cactusCrop, name: "Cactus (early harvest)", growthStages: makeCppBasicDecorationCrop({ tier: 3, maxSize: 2 }).growthStages, possibleDrops: [[["Tiny Cactus", 1], 1]] }));
+/* Cobalt berries drop one ardite nugget regardless of when it is harvested.
+ */
+let cropCobaltBerry = Object.assign(Object.assign({}, makeCppBasicTinkerBerryCrop({
+    name: "Cobalt Berry",
+    tier: 7,
+})), { foundationBlock: "Cobalt Block", possibleDrops: [[['Cobalt Nugget', 1], 1]], growthStages: [500, 3000, 3000, 0], attributes: ["OreBerry", "Cobalt", "Metal", "Blue"] });
+CropData.registerCrop(cropCobaltBerry);
+CropData.registerCrop(Object.assign(Object.assign({}, cropCobaltBerry), { variantOf: cropCobaltBerry, name: "Cobalt Berry (early harvest)", possibleDrops: [[['Cobalt Nugget', 1], 1]], growthStages: [500, 3000, 0] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicDecorationCrop({
+    name: "Goldfish Plant",
+    tier: 4,
+})), { attributes: ["Nether", "Fish", "Food", "Bad", "Water"], growthStages: makeCppBasicDecorationCrop({ tier: 4 }).growthStages.map(s => s == 0 ? 0 : 225), possibleDrops: [[['Goldfish', 1], 1]] }));
+let cropGrass = Object.assign(Object.assign({}, makeCppBasicDecorationCrop({
+    name: "Grass",
+    tier: 0,
+    maxSize: 4,
+})), { minimumHarvestSize: 2, growthStageAfterHarvest: 3, attributeChemical: 0, attributeFood: 0, attributeDefensive: 0, attributeColor: 3, attributeWeed: 4, attributes: ["Green", "Bad"], possibleDrops: [[['Dead Bush', 1], 1]] });
+CropData.registerCrop(cropGrass);
+CropData.registerCrop(Object.assign(Object.assign({}, cropGrass), { variantOf: cropGrass, growthStages: makeCppBasicDecorationCrop({ tier: 0, maxSize: 2 }).growthStages, growthStageAfterHarvest: 1, possibleDrops: [
+        [['Double Tallgrass', 1], 1 / 10],
+        [['Grass (Minecraft)', 1], 9 / 10],
+    ] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicBerryCrop({
+    name: "Huckleberry",
+})), { attributes: ["Berry", "Food", "Purple", "Leaves"], possibleDrops: [[['Huckleberry', 1], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, cropPrimordialPearl), { name: "Magical Nightshade", tier: 13, minimumCrossSize: cropPrimordialPearl.growthStages.length, growthStages: cropPrimordialPearl.growthStages.map(s => Math.floor(s / 16)), gainFactor: Math.pow(0.95, 13) * cropPrimordialPearl.gainFactor * 1.5, foundationBlock: "Ichorium Block", growthStageAfterHarvest: 1, possibleDrops: [[['Magic Essence', 1], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicDecorationCrop({
+    tier: 5,
+    name: "Papyrus",
+})), { possibleDrops: [[['Paper', 1], 1]], attributes: ["White", "Paper"] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicCrop({
+    name: "Space Plant",
+    tier: 13,
+    maxSize: 4,
+})), { growthStages: [5000, 5000, 5000, 0], attributeChemical: 8, attributeFood: 0, attributeDefensive: 0, attributeColor: 4, attributeWeed: 0, attributes: ["Alien", "Space", "Radiation", "Transform"], foundationBlock: "Any moonBlock", minimumHarvestSize: 4, possibleDrops: [[["Space Flower", 1], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicBerryCrop({
+    name: "Strawberry",
+})), { attributes: ["Berry", "Food", "Red"], possibleDrops: [[["Strawberry", 1], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicFoodCrop({
+    name: "Sugar Beet",
+    tier: 4,
+})), { attributes: ["Food", "White", "Ingredient"], possibleDrops: [[["Sugar Beet", 1], 1]] }));
+/* FloweringVines extends this crop. */
+let cropVine = Object.assign(Object.assign({}, makeCppBasicDecorationCrop({
+    tier: 2,
+    name: "Vines",
+})), { attributes: ["Green", "Tendrilly"], possibleDrops: [[['Vines', 2], 1]] });
+CropData.registerCrop(cropVine);
+let cropWaterlilly = Object.assign(Object.assign({}, makeCppBasicDecorationCrop({
+    tier: 2,
+    name: "Waterlilly",
+})), { growthStages: makeCppBasicDecorationCrop({ tier: 2 }).growthStages.map(s => s === 0 ? 0 : 550), attributes: ["Blue", "Water", "Green"], possibleDrops: [
+        [['Pink Dye', 1], 1 / 10],
+        [['Lily Pad', 1], 9 / 10],
+    ] });
+CropData.registerCrop(cropWaterlilly);
+CropData.registerCrop(Object.assign(Object.assign({}, cropWaterlilly), { variantOf: cropWaterlilly, name: "Waterlilly (with water block underneath)", foundationBlock: "Water", growthStages: makeCppBasicDecorationCrop({ tier: 2 }).growthStages.map(s => s === 0 ? 0 : 225) }));
+/* There's also code for a Weed Crop that just copies IC2's weed crop,
+ * but this crop is never registered.
+ */
+
+/* Source: src/main/java/com/github/bartimaeusnek/cropspp/crops/BoP/Bamboo.java
+ * Bamboos drop one less bamboo if harvested as early as possible.
+ */
+let bambooCrop = Object.assign(Object.assign({}, makeCppBasicCrop({
+    name: "Bamboo",
+    tier: 2,
+    maxSize: 3,
+})), { attributeChemical: 0, attributeFood: 0, attributeDefensive: 3, attributeColor: 0, attributeWeed: 3, attributes: ["Green", "Pointed", "Edgy"], minimumHarvestSize: 2, possibleDrops: [[['Bamboo', 2], 1]], growthStages: [150, 150, 0] });
+CropData.registerCrop(bambooCrop);
+CropData.registerCrop(Object.assign(Object.assign({}, bambooCrop), { variantOf: bambooCrop, name: "Bamboo (early harvest)", minimumHarvestSize: 2, possibleDrops: [[['Bamboo', 1], 1]], growthStages: [150, 0] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicBerryCrop({
+    name: "Berry",
+    tier: 2,
+    maxSize: 3,
+})), { attributeChemical: 0, attributeFood: 4, attributeDefensive: 0, attributeColor: 4, attributeWeed: 0, minimumHarvestSize: 3, growthStages: [700, 200, 0], growthStageAfterHarvest: 2, possibleDrops: [[["Berry (Biomes O' Plenty)", 3], 1]], attributes: ["Berry", "Food", "Red", "Ingredient"] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicDecorationCrop({
+    name: "Eyebulb",
+})), { attributes: ["Nether", "Evil", "Bad"], possibleDrops: [[["Eyebulb", 3], 1]] }));
+let cropFloweringVines = Object.assign(Object.assign({}, cropVine), { name: "Flowering Vines", tier: 3, growthStages: makeCppBasicDecorationCrop({ tier: 3, maxSize: 4 }).growthStages, gainFactor: makeCppBasicDecorationCrop({ tier: 3 }).gainFactor, attributes: ["Green", "Tendrilly", "Flower"], minimumHarvestSize: 3, possibleDrops: [[["Flowering Vines", 2], 1]] });
+CropData.registerCrop(cropFloweringVines);
+CropData.registerCrop(Object.assign(Object.assign({}, cropFloweringVines), { variantOf: cropFloweringVines, name: "Flowering Vines (early harvest)", growthStages: makeCppBasicDecorationCrop({ tier: 3, maxSize: 3 }).growthStages, possibleDrops: [[["Vines", 2], 1]] }));
+let cropGlowflower = Object.assign(Object.assign({}, makeCppBasicDecorationCrop({
+    name: "Glowflower",
+    tier: makeCppBasicDecorationCrop({}).tier + 2,
+})), { attributes: ["Nether", "Light", "Shiny"], possibleDrops: [[["Glowflower (Biomes O' Plenty)", 1], 1]] });
+CropData.registerCrop(cropGlowflower);
+CropData.registerCrop(Object.assign(Object.assign({}, cropGlowflower), { variantOf: cropGlowflower, name: "Glowflower (with glowstone block underneath)", foundationBlock: "Glowstone", possibleDrops: [[["Glowflower (Biomes O' Plenty)", 2], 1]] }));
+let cropGlowingEarthCoral = Object.assign(Object.assign({}, makeCppBasicDecorationCrop({
+    name: "Glowing Earth Coral",
+    tier: makeCppBasicDecorationCrop({}).tier + 4,
+})), { attributes: ["Water", "Light", "Shiny"], possibleDrops: [[["Glowing Coral", 1], 1]] });
+CropData.registerCrop(cropGlowingEarthCoral);
+CropData.registerCrop(Object.assign(Object.assign({}, cropGlowingEarthCoral), { variantOf: cropGlowingEarthCoral, name: "Glowing Earth Coral (with glowstone block underneath)", foundationBlock: "Glowstone", possibleDrops: [[["Glowing Coral", 2], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, cropVine), { name: "Ivy", tier: 2, growthStages: makeCppBasicDecorationCrop({ tier: 2, maxSize: 3 }).growthStages, gainFactor: makeCppBasicDecorationCrop({ tier: 2 }).gainFactor, attributes: ["Green", "Tendrilly", "Flower", "Bad", "Poison"], minimumHarvestSize: 3, possibleDrops: [[["Ivy", 2], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicFoodCrop({
+    name: "Turnip",
+})), { possibleDrops: [[["Turnip (Pam's Harvestcraft)", 1], 1]], attributes: ["Food", "Purple", "Carrots"] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicFoodCrop({
+    name: "Wild Carrots",
+})), { possibleDrops: [[["Wild Carrots", 1], 1]], attributes: ["Food", "White", "Carrots"] }));
+
+/* From src/main/java/com/github/bartimaeusnek/cropspp/crops/gregtechCrops/GarnydniaCrop.java:
+ * the getGain method is a mess,
+ * it has a few off-by-one errors that bias drops towards yellow garnets (51% vs 49%)
+ * and, in 4% of the cases,
+ * it fails to return a drop at all.
+ */
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicCrop({
+    name: "Garnydinia",
+    tier: 7,
+    maxSize: 3,
+})), { humidityWeight: 0.5, nutrientsWeight: 2.0, airQualityWeight: 0.5, attributeChemical: 4, attributeFood: 0, attributeDefensive: 2, attributeColor: 4, attributeWeed: 0, attributes: ["Shiny", "Crystal", "Red", "Yellow", "Metal"], foundationBlock: "Yellow/Red Garnet Block/Ore", growthStages: [300, 550, 0], minimumHarvestSize: 3, possibleDrops: [
+        [['Exquisite Red Garnet', 1], 49 / 100 * 4 / 100],
+        [['Exquisite Yellow Garnet', 1], 51 / 100 * 4 / 100],
+        [['Red Garnet', 1], 49 / 100 * 14 / 100],
+        [['Yellow Garnet', 1], 51 / 100 * 14 / 100],
+        [['Purified Garnet Sand', 1], 1 / 100],
+        [['Red Garnet Dust', 1], 49 / 100 * 38 / 100],
+        [['Yellow Garnet Dest', 1], 51 / 100 * 38 / 100],
+        [['Small Red Garnet Dust', 1], 49 / 100 * 18 / 100],
+        [['Small Yellow Garnet Dest', 1], 51 / 100 * 18 / 100],
+        [['Purified Red Garnet Ore', 1], 49 / 100 * 3 / 100],
+        [['Purified Yellow Garnet Ore', 1], 51 / 100 * 3 / 100],
+        [['Tiny Red Garnet Dust', 1], 49 / 100 * 18 / 100],
+        [['Tiny Yellow Garnet Dest', 1], 51 / 100 * 18 / 100],
+    ], growthStageAfterHarvest: 1 }));
+function makeStonelilly({ // Base stonelilly, with combined attributes for all of them
+color = "", additionalAttribute = "", }) {
+    return Object.assign(Object.assign({}, makeCppBasicDecorationCrop({
+        name: `${color} Stonelilly`,
+    })), { attributes: ["Stone", additionalAttribute], growthStages: [300, 300, 0] });
+}
+let cropRedStonelilly = Object.assign(Object.assign({}, makeStonelilly({
+    color: "Red",
+    additionalAttribute: "Fire",
+})), { foundationBlock: "Red Granite (#stoneGraniteRed)", possibleDrops: [[['Red Granite Dust', 9], 1]] });
+CropData.registerCrop(cropRedStonelilly);
+CropData.registerCrop(Object.assign(Object.assign({}, cropRedStonelilly), { variantOf: cropRedStonelilly, name: "Red Stonelilly (with granite underneath)", foundationBlock: "Granite (Chisel)", possibleDrops: [[['Granite (Chisel)', 1], 1]] }));
+let cropBlackStonelilly = Object.assign(Object.assign({}, makeStonelilly({
+    color: "Black",
+    additionalAttribute: "Dark",
+})), { foundationBlock: "Black Granite (#stoneGraniteBlack)", possibleDrops: [[['Black Granite Dust', 9], 1]] });
+CropData.registerCrop(cropBlackStonelilly);
+CropData.registerCrop(Object.assign(Object.assign({}, cropBlackStonelilly), { variantOf: cropBlackStonelilly, name: "Black Stonelilly (with basalt underneath)", foundationBlock: "Basalt", possibleDrops: [[['Basalt Dust', 9], 1]] }));
+let cropWhiteStonelilly = Object.assign(Object.assign({}, makeStonelilly({
+    color: "White",
+    additionalAttribute: "Shiny",
+})), { foundationBlock: "Marble (#blockMarble)", possibleDrops: [[['Marble Dust', 9], 1]] });
+CropData.registerCrop(cropWhiteStonelilly);
+CropData.registerCrop(Object.assign(Object.assign({}, cropWhiteStonelilly), { variantOf: cropWhiteStonelilly, name: "White Stonelilly (with diorite underneath)", foundationBlock: "Diorite (#blockDiorite)", possibleDrops: [[['Diorite (Chisel)', 1], 1]] }));
+let cropGrayStonelilly = Object.assign(Object.assign({}, makeStonelilly({
+    color: "Gray",
+    additionalAttribute: "Metal",
+})), { foundationBlock: "Stone or Cobblestone", possibleDrops: [[['Stone Dust', 9], 1]] });
+CropData.registerCrop(cropGrayStonelilly);
+CropData.registerCrop(Object.assign(Object.assign({}, cropGrayStonelilly), { variantOf: cropGrayStonelilly, name: "Gray Stonelilly (with andesite underneath)", foundationBlock: "Andesite (#blockAndesite)", possibleDrops: [[['Diorite (Chisel)', 1], 1]] }));
+let cropYellowStonelilly = Object.assign(Object.assign({}, makeStonelilly({
+    color: "Yellow",
+    additionalAttribute: "Alien",
+})), { foundationBlock: "Sand or Sandstone", possibleDrops: [[['Sand', 4], 1]] });
+CropData.registerCrop(cropYellowStonelilly);
+CropData.registerCrop(Object.assign(Object.assign({}, cropYellowStonelilly), { variantOf: cropYellowStonelilly, name: "Yellow Stonelilly (with End Stone underneath)", foundationBlock: "End Stone", growthStages: [300, 550, 0], possibleDrops: [[['Endstone Dust', 2], 1]] }));
+let cropNetherStonelilly = Object.assign(Object.assign({}, makeStonelilly({
+    color: "Nether",
+    additionalAttribute: "Evil",
+})), { foundationBlock: "Netherrack or Nether Brick", possibleDrops: [[['Netherrack Dust', 9], 1]] });
+CropData.registerCrop(cropNetherStonelilly);
 
 /* Good Generator has a single crop,
  * defined in src/main/java/goodgenerator/crossmod/ic2/GGCropsSaltyRoot.java.
@@ -489,7 +759,7 @@ CropData.registerCrop(makeGTCrop({
     defaultDrop: "Coppon Fiber",
 }));
 CropData.registerCrop(makeGTCrop({
-    name: "Brown Mushrooms",
+    name: "Brown Mushrooms (GT)",
     tier: 1,
     maxSize: 3,
     growthStageAfterHarvest: 1,
@@ -503,7 +773,7 @@ CropData.registerCrop(makeGTCrop({
     defaultDrop: "Brown Mushroom", // The in-game name is just "Mushroom"
 }));
 CropData.registerCrop(makeGTCrop({
-    name: "Red Mushrooms",
+    name: "Red Mushrooms (GT)",
     tier: 1,
     maxSize: 3,
     growthStageAfterHarvest: 1,
@@ -1090,7 +1360,7 @@ CropData.registerCrop(Object.assign(Object.assign({}, makeDefaultCrop({
     // Plain IC2 Aurelia drops tiny piles of gold dust, GT5 makes it drop aurelia leaves
     possibleDrops: [[["Aurelia Leaf", 1], 1]], growthStages: [750, 750, 750, 2200, 0], growthStageAfterHarvest: 2 }));
 CropData.registerCrop(Object.assign(Object.assign({}, makeDefaultCrop({
-    name: "Brown Mushroom",
+    name: "Brown Mushroom (IC2)",
     tier: 2,
     maxSize: 3,
 })), { attributeChemical: 0, attributeFood: 4, attributeDefensive: 0, attributeColor: 0, attributeWeed: 4, attributes: ["Brown", "Food", "Mushroom"], minimumHarvestSize: 3, possibleDrops: [[["Brown Mushroom", 1], 1]], growthStages: [200, 200, 0] }));
@@ -1160,14 +1430,14 @@ let cropPotato = Object.assign(Object.assign({}, makeDefaultCrop({
     maxSize: 4,
 })), { attributeChemical: 0, attributeFood: 4, attributeDefensive: 0, attributeColor: 0, attributeWeed: 2, attributes: ["Yellow", "Food", "Potato"], minimumHarvestSize: 3, possibleDrops: [[["Poisonous Potato", 1], 1]], growthStageAfterHarvest: 1 });
 CropData.registerCrop(cropPotato);
-CropData.registerCrop(Object.assign(Object.assign({}, cropPotato), { variantOf: cropPotato, name: "Potato (early harvest)", growthStages: makeDefaultCrop({ maxSize: 3 }).growthStages, possibleDrops: [[["Potato", 1], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, cropPotato), { variantOf: cropPotato, name: "Potato (early harvest)", growthStages: makeDefaultCrop({ tier: 2, maxSize: 3 }).growthStages, possibleDrops: [[["Potato", 1], 1]] }));
 CropData.registerCrop(Object.assign(Object.assign({}, makeDefaultCrop({
     name: "Pumpkin",
     tier: 1,
     maxSize: 4,
 })), { attributeChemical: 0, attributeFood: 1, attributeDefensive: 0, attributeColor: 3, attributeWeed: 1, attributes: ["Orange", "Decoration", "Stem"], humidityWeight: 1.1, nutrientsWeight: 0.9, airQualityWeight: 1.0, minimumHarvestSize: 4, possibleDrops: [[["Pumpkin", 1], 1]], growthStages: [200, 200, 600, 0], growthStageAfterHarvest: 3 }));
 CropData.registerCrop(Object.assign(Object.assign({}, makeDefaultCrop({
-    name: "Red Mushroom",
+    name: "Red Mushroom (IC2)",
     tier: 2,
     maxSize: 3,
 })), { attributeChemical: 0, attributeFood: 4, attributeDefensive: 0, attributeColor: 0, attributeWeed: 4, attributes: ["Red", "Food", "Mushroom"], growthStages: [200, 200, 0], minimumHarvestSize: 3, possibleDrops: [[["Red Mushroom", 1], 1]] }));
@@ -1225,7 +1495,7 @@ CropData.registerCrop(Object.assign(Object.assign({}, makeDefaultCrop({
     maxSize: 5,
 })), { attributeChemical: 0, attributeFood: 0, attributeDefensive: 1, attributeColor: 0, attributeWeed: 5, attributes: ["Weed", "Bad"], possibleDrops: [], growthStages: [300, 300, 300, 300, 0] }));
 CropData.registerCrop(Object.assign(Object.assign({}, makeDefaultCrop({
-    name: "Redwheat",
+    name: "Wheat",
     tier: 1,
     maxSize: 7,
 })), { attributeChemical: 0, attributeFood: 4, attributeDefensive: 0, attributeColor: 0, attributeWeed: 2, attributes: ["Yellow", "Food", "Wheat"], minimumHarvestSize: 7, possibleDrops: [[["Wheat", 1], 1 / 2]], growthStageAfterHarvest: 2 }));
