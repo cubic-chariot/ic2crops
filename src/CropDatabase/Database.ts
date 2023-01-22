@@ -385,3 +385,53 @@ export function makeCppBasicTinkerBerryCrop({
         growthStageAfterHarvest: 2,
     }
 }
+
+export function makeCppBasicNetherBerryCrop({
+    name = "Unnamed Crop",
+    tier = 4,
+}): CropData
+{
+    return {
+        ...makeCppBasicBerryCrop({name, tier}),
+        attributeChemical: 1,
+        attributeFood: 3,
+        attributeDefensive: 4,
+        attributeColor: 4,
+        attributeWeed: 0,
+        humidityWeight: 0.5,
+        nutrientsWeight: 1.5,
+        airQualityWeight: 1.0,
+        growthStages: [700, 300, 0],
+    };
+}
+
+export function makeCppBasicThaumcraftCrop({
+    name = "Unnamed Crop",
+    tier = 4,
+}): CropData
+{
+    return {
+        ...makeCppBasicCrop({name, tier}),
+        growthStages: [1800, 2200, 0],
+        attributeChemical: 2,
+        attributeFood: 0,
+        attributeDefensive: 0,
+        attributeColor: 2,
+        attributeWeed: 0,
+        minimumHarvestSize: 3,
+    }
+}
+
+export function makeCppBasicWitcheryCrop({
+    name = "Unnamed Crop",
+    tier = 4,
+    maxSize = 3, // Default maxSize is 3, inherited from BasicDecorationCrop
+}): CropData
+{
+    let growthStages = Array(maxSize).fill(550);
+    growthStages[maxSize-1] = 0;
+    return {
+        ...makeCppBasicDecorationCrop({name, tier}),
+        growthStages,
+    }
+}

@@ -231,7 +231,37 @@ maxSize = 4, // Default maxSize is 4,
         maxSize,
     })), { gainFactor, attributeChemical: 3, attributeFood: 0, attributeDefensive: 4, attributeColor: 1, attributeWeed: 0, minimumHarvestSize: 3, humidityWeight: 0.5, nutrientsWeight: 1.5, airQualityWeight: 1.0, growthStageAfterHarvest: 2 });
 }
+function makeCppBasicNetherBerryCrop({ name = "Unnamed Crop", tier = 4, }) {
+    return Object.assign(Object.assign({}, makeCppBasicBerryCrop({ name, tier })), { attributeChemical: 1, attributeFood: 3, attributeDefensive: 4, attributeColor: 4, attributeWeed: 0, humidityWeight: 0.5, nutrientsWeight: 1.5, airQualityWeight: 1.0, growthStages: [700, 300, 0] });
+}
+function makeCppBasicThaumcraftCrop({ name = "Unnamed Crop", tier = 4, }) {
+    return Object.assign(Object.assign({}, makeCppBasicCrop({ name, tier })), { growthStages: [1800, 2200, 0], attributeChemical: 2, attributeFood: 0, attributeDefensive: 0, attributeColor: 2, attributeWeed: 0, minimumHarvestSize: 3 });
+}
+function makeCppBasicWitcheryCrop({ name = "Unnamed Crop", tier = 4, maxSize = 3, // Default maxSize is 3, inherited from BasicDecorationCrop
+ }) {
+    let growthStages = Array(maxSize).fill(550);
+    growthStages[maxSize - 1] = 0;
+    return Object.assign(Object.assign({}, makeCppBasicDecorationCrop({ name, tier })), { growthStages });
+}
 
+/* Note: If the foundation block is a mixed crystal cluster,
+ * the mana bean will have a random primal aspect;
+ * otherwise it will have the same aspect as the foundation block.
+ */
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicThaumcraftCrop({
+    name: "Mana Bean",
+})), { attributeChemical: 0, attributeFood: 4, attributeDefensive: 0, attributeColor: 4, attributeWeed: 0, foundationBlock: "Crystal Cluster (any)", humidityWeight: 1.3, nutrientsWeight: 1.0, airQualityWeight: 0.7, growthStages: [800, 1200], attributes: ["Berry", "Bean", "Magic", "Colorful"], possibleDrops: [[["Mana Bean", 1], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicThaumcraftCrop({
+    name: "Cinderpearl",
+})), { attributes: ["Magic", "Blaze", "Nether"], growthStages: [2250, 1750, 0], foundationBlock: "Blaze Lamp", possibleDrops: [[["Cinderpearl", 1], 1]] }));
+let cropMagicMetalBerry = Object.assign(Object.assign({}, makeCppBasicTinkerBerryCrop({
+    name: "Magic Metal Berry",
+    tier: 7,
+})), { foundationBlock: "Iron Block", minimumHarvestSize: 4, possibleDrops: [[['Thaumium Nugget', 1], 1]], growthStages: [500, 1200, 3300, 0] });
+CropData.registerCrop(cropMagicMetalBerry);
+CropData.registerCrop(Object.assign(Object.assign({}, cropMagicMetalBerry), { variantOf: cropMagicMetalBerry, name: "Magic Metal Berry (with Thaumium Block underneath)", foundationBlock: "Thaumium Block", possibleDrops: [[['Thaumium Nugget', 1], 1]], growthStages: [500, 1200, 1800, 0] }));
+CropData.registerCrop(Object.assign(Object.assign({}, cropMagicMetalBerry), { variantOf: cropMagicMetalBerry, name: "Magic Metal Berry (with Thauminite Block underneath)", foundationBlock: "Thauminite Block", possibleDrops: [[['Thauminite Nugget', 1], 1]], growthStages: [500, 1200, 3300, 0] }));
+CropData.registerCrop(Object.assign(Object.assign({}, cropMagicMetalBerry), { variantOf: cropMagicMetalBerry, name: "Magic Metal Berry (with Void Block underneath)", foundationBlock: "Void metal Block", possibleDrops: [[['Void Nugget', 1], 1]], growthStages: [500, 1200, 3300, 0] }));
 // Config value: berriespp.cfg > gain > I:"Primordial Berry growth time"
 let primordialBerryGrowth = 125000;
 // Config value: berriespp.cfg > gain > D:"Primordial Berry"
@@ -242,6 +272,9 @@ let cropPrimordialPearl = Object.assign(Object.assign({}, makeCppBasicCrop({
     maxSize: 4,
 })), { attributeChemical: 0, attributeFood: 0, attributeDefensive: 0, attributeColor: 12, attributeWeed: 0, minimumHarvestSize: 4, humidityWeight: 2.0, nutrientsWeight: 2.0, airQualityWeight: 2.0, growthStages: [primordialBerryGrowth, primordialBerryGrowth, primordialBerryGrowth, 0], gainFactor: primordialBerryGain, growthStageAfterHarvest: 1, minimumCrossSize: 'never', possibleDrops: [[['Primordial Pearl', 1], 1]], attributes: ["Berry", "Primordial", "Magic", "Unique"] });
 CropData.registerCrop(cropPrimordialPearl);
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicThaumcraftCrop({
+    name: "Shimmerleaf",
+})), { attributes: ["Magic", "Silver", "Toxit"], growthStages: [2250, 1750, 0], foundationBlock: "Quicksilver Block", possibleDrops: [[["Shimmerleaf", 1], 1]] }));
 
 /* Ardite berries drop one ardite nugget regardless of when it is harvested.
  */
@@ -295,6 +328,7 @@ CropData.registerCrop(makeBonsai({ treeName: "Birch" }));
 CropData.registerCrop(makeBonsai({ treeName: "Jungle" }));
 CropData.registerCrop(makeBonsai({ treeName: "Acacia" }));
 CropData.registerCrop(makeBonsai({ treeName: "Dark Oak" }));
+// Extended by Saguaro Crop
 let cactusCrop = Object.assign(Object.assign({}, makeCppBasicDecorationCrop({
     name: "Cactus",
     tier: 3,
@@ -420,13 +454,13 @@ CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicCrop({
         [['Yellow Garnet', 1], 51 / 100 * 14 / 100],
         [['Purified Garnet Sand', 1], 1 / 100],
         [['Red Garnet Dust', 1], 49 / 100 * 38 / 100],
-        [['Yellow Garnet Dest', 1], 51 / 100 * 38 / 100],
+        [['Yellow Garnet Dust', 1], 51 / 100 * 38 / 100],
         [['Small Red Garnet Dust', 1], 49 / 100 * 18 / 100],
-        [['Small Yellow Garnet Dest', 1], 51 / 100 * 18 / 100],
+        [['Small Yellow Garnet Dust', 1], 51 / 100 * 18 / 100],
         [['Purified Red Garnet Ore', 1], 49 / 100 * 3 / 100],
         [['Purified Yellow Garnet Ore', 1], 51 / 100 * 3 / 100],
         [['Tiny Red Garnet Dust', 1], 49 / 100 * 18 / 100],
-        [['Tiny Yellow Garnet Dest', 1], 51 / 100 * 18 / 100],
+        [['Tiny Yellow Garnet Dust', 1], 51 / 100 * 18 / 100],
     ], growthStageAfterHarvest: 1 }));
 function makeStonelilly({ // Base stonelilly, with combined attributes for all of them
 color = "", additionalAttribute = "", }) {
@@ -469,6 +503,145 @@ let cropNetherStonelilly = Object.assign(Object.assign({}, makeStonelilly({
     additionalAttribute: "Evil",
 })), { foundationBlock: "Netherrack or Nether Brick", possibleDrops: [[['Netherrack Dust', 9], 1]] });
 CropData.registerCrop(cropNetherStonelilly);
+
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicFoodCrop({
+    name: "Barley",
+    tier: 2,
+    maxSize: 4,
+})), { attributes: ["Green", "Food", "Wheat"], minimumHarvestSize: 4, possibleDrops: [[["Barley (Pam's Harvestcraft)", 1], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicBerryCrop({
+    name: "Blackberry",
+})), { attributes: ["Berry", "Food", "Black"], minimumHarvestSize: 4, possibleDrops: [[['Blackberry (Natura)', 3], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicBerryCrop({
+    name: "Blueberry",
+})), { attributes: ["Berry", "Food", "Blue"], minimumHarvestSize: 4, possibleDrops: [[['Blueberry (Natura)', 3], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicDecorationCrop({
+    name: "Cotton",
+    tier: 3,
+    maxSize: 5,
+})), { attributeChemical: 4, attributeFood: 4, attributeDefensive: 0, attributeColor: 0, attributeWeed: 2, attributes: ["White", "Cotton"], minimumHarvestSize: 5, possibleDrops: [[['Cotton (Natura)', 1], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicBerryCrop({
+    name: "Maloberry",
+})), { attributes: ["Berry", "Food", "Yellow"], minimumHarvestSize: 4, possibleDrops: [[['Maloberry (Natura)', 3], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicBerryCrop({
+    name: "Raspberry",
+})), { attributes: ["Berry", "Food", "Red"], minimumHarvestSize: 4, possibleDrops: [[['Raspberry (Natura)', 3], 1]] }));
+let saguaroCactusCrop = Object.assign(Object.assign({}, cactusCrop), { tier: 4, gainFactor: makeCppBasicDecorationCrop({ tier: 4 }).gainFactor, name: "Saguaro Cactus", attributes: ["Green", "Food", "Cactus"], possibleDrops: [[['Saguaro Fruit (Natura)', 3], 1]], growthStages: [225, 225, 450, 0], minimumHarvestSize: 2, growthStageAfterHarvest: 2 });
+CropData.registerCrop(saguaroCactusCrop);
+CropData.registerCrop(Object.assign(Object.assign({}, saguaroCactusCrop), { variantOf: saguaroCactusCrop, name: "Saguaro Cactus (early harvest)", possibleDrops: [[['Saguaro Cactus (Natura)', 2], 1]], growthStages: [225, 225, 0], growthStageAfterHarvest: 1 }));
+
+function makeNetherShroomCrop({ name = "", drop = "", }) {
+    return Object.assign(Object.assign({}, makeCppBasicNetherBerryCrop({ name, tier: 3 })), { attributeChemical: 1, attributeFood: 3, attributeDefensive: 0, attributeColor: 4, attributeWeed: 0, growthStages: [600, 0], minimumHarvestSize: 2, attributes: ["Food", "Mushroom", "Ingredient", "Nether"], possibleDrops: [[[drop, 1], 1]], growthStageAfterHarvest: 1 });
+}
+CropData.registerCrop(makeNetherShroomCrop({
+    name: "Glowshroom",
+    drop: "Glowshroom (Biomes O' Plenty)",
+}));
+CropData.registerCrop(makeNetherShroomCrop({
+    name: "Blue Glowshroom",
+    drop: "Blue Glowshroom (Natura)",
+}));
+CropData.registerCrop(makeNetherShroomCrop({
+    name: "Green Glowshroom",
+    drop: "Green Glowshroom (Natura)",
+}));
+CropData.registerCrop(makeNetherShroomCrop({
+    name: "Purple Glowshroom",
+    drop: "Purple Glowshroom (Natura)",
+}));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicNetherBerryCrop({
+    name: "Blightberry",
+})), { attributes: ["Berry", "Toxic", "Bad", "Green", "Nether", "Addictive"], possibleDrops: [[["Blightberry", 2], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicNetherBerryCrop({
+    name: "Duskberry",
+})), { attributes: ["Berry", "Toxic", "Bad", "Gray", "Nether", "Addictive"], possibleDrops: [[["Duskberry", 2], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicNetherBerryCrop({
+    name: "Skyberry",
+})), { attributes: ["Berry", "Toxic", "Bad", "Blue", "Nether", "Addictive"], possibleDrops: [[["Skyberry", 2], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicNetherBerryCrop({
+    name: "Stingberry",
+})), { attributes: ["Berry", "Toxic", "Bad", "Green", "Nether", "Addictive"], possibleDrops: [[["Stingberry", 2], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, cropVine), { name: "Thornvines", tier: 3, gainFactor: makeCppBasicDecorationCrop({ tier: 3 }).gainFactor, possibleDrops: [[["Thornvines", 2], 1]], attributes: ["Nether", "Climbable", "Bad"] }));
+
+let cropAluminiumOreberry = Object.assign(Object.assign({}, makeCppBasicTinkerBerryCrop({
+    name: "Aluminium Oreberry",
+})), { foundationBlock: "Aluminium Block", possibleDrops: [[['Aluminum Oreberry', 6], 1]], growthStages: [500, 3000, 3000, 0], attributes: ["OreBerry", "Aluminium", "Metal", "Aluminum"] });
+CropData.registerCrop(cropAluminiumOreberry);
+CropData.registerCrop(Object.assign(Object.assign({}, cropAluminiumOreberry), { variantOf: cropAluminiumOreberry, name: "Aluminium Oreberry (early harvest)", foundationBlock: "", possibleDrops: [[['Aluminum Oreberry', 2], 1]], growthStages: [500, 3000, 0] }));
+let cropCopperOreberry = Object.assign(Object.assign({}, makeCppBasicTinkerBerryCrop({
+    name: "Copper Oreberry",
+})), { foundationBlock: "Copper Block", possibleDrops: [[['Copper Oreberry', 6], 1]], growthStages: [500, 3000, 3000, 0], attributes: ["OreBerry", "Copper", "Metal", "Shiny"] });
+CropData.registerCrop(cropCopperOreberry);
+CropData.registerCrop(Object.assign(Object.assign({}, cropCopperOreberry), { variantOf: cropCopperOreberry, name: "Copper Oreberry (early harvest)", foundationBlock: "", possibleDrops: [[['Copper Oreberry', 2], 1]], growthStages: [500, 3000, 0] }));
+let cropEssenceOreberry = Object.assign(Object.assign({}, makeCppBasicTinkerBerryCrop({
+    name: "Essence Berry",
+})), { foundationBlock: "Enderman Head", possibleDrops: [[['Essence Oreberry', 6], 1]], growthStages: [500, 3000, 3000, 0], attributes: ["OreBerry", "Essence", "Undead"] });
+CropData.registerCrop(cropEssenceOreberry);
+CropData.registerCrop(Object.assign(Object.assign({}, cropEssenceOreberry), { variantOf: cropEssenceOreberry, name: "Essence Oreberry (early harvest)", foundationBlock: "", possibleDrops: [[['Essence Oreberry', 2], 1]], growthStages: [500, 3000, 0] }));
+let cropGoldOreberry = Object.assign(Object.assign({}, makeCppBasicTinkerBerryCrop({
+    name: "Gold Oreberry",
+})), { foundationBlock: "Gold Block", possibleDrops: [[['Gold Oreberry', 6], 1]], growthStages: [500, 3000, 3000, 0], attributes: ["OreBerry", "Gold", "Metal"] });
+CropData.registerCrop(cropGoldOreberry);
+CropData.registerCrop(Object.assign(Object.assign({}, cropGoldOreberry), { variantOf: cropGoldOreberry, name: "Gold Oreberry (early harvest)", foundationBlock: "", possibleDrops: [[['Gold Oreberry', 2], 1]], growthStages: [500, 3000, 0] }));
+let cropIronOreberry = Object.assign(Object.assign({}, makeCppBasicTinkerBerryCrop({
+    name: "Iron Oreberry",
+})), { foundationBlock: "Iron Block", possibleDrops: [[['Iron Oreberry', 6], 1]], growthStages: [500, 3000, 3000, 0], attributes: ["OreBerry", "Iron", "Metal"] });
+CropData.registerCrop(cropIronOreberry);
+CropData.registerCrop(Object.assign(Object.assign({}, cropIronOreberry), { variantOf: cropIronOreberry, name: "Iron Oreberry (early harvest)", foundationBlock: "", possibleDrops: [[['Iron Oreberry', 2], 1]], growthStages: [500, 3000, 0] }));
+let cropTinOreberry = Object.assign(Object.assign({}, makeCppBasicTinkerBerryCrop({
+    name: "Tin Oreberry",
+    tier: 4,
+})), { foundationBlock: "Tin Block", possibleDrops: [[['Tin Oreberry', 6], 1]], growthStages: [500, 3000, 3000, 0], attributes: ["OreBerry", "Tin", "Metal", "Shiny"] });
+CropData.registerCrop(cropTinOreberry);
+CropData.registerCrop(Object.assign(Object.assign({}, cropTinOreberry), { variantOf: cropTinOreberry, name: "Tin Oreberry (early harvest)", foundationBlock: "", possibleDrops: [[['Tin Oreberry', 2], 1]], growthStages: [500, 3000, 0] }));
+
+let cropKnightmetal = Object.assign(Object.assign({}, makeCppBasicTinkerBerryCrop({
+    name: "Knightly Oreberry",
+    tier: 8,
+})), { attributes: ["OreBerry", "Knightly", "Metal"], foundationBlock: "Block of Knightmetal", growthStages: [1000, 4500, 4500, 0], possibleDrops: [[['Armor Shard', 4], 1]] });
+CropData.registerCrop(cropKnightmetal);
+CropData.registerCrop(Object.assign(Object.assign({}, cropKnightmetal), { variantOf: cropKnightmetal, name: "Knightly Oreberry (early harvest)", foundationBlock: "", growthStages: [1000, 4500, 0], possibleDrops: [[['Armor Shard', 1], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicDecorationCrop({
+    name: "Moss",
+    tier: 4,
+})), { attributes: ["Green", "Climbable"], possibleDrops: [
+        [["Moss Patch (Twilight Forest)", 1], 5 / 100],
+        [["Moss (Biomes O' Plenty)", 1], 29 / 100],
+        [["Tree Moss (Biomes O' Plenty)", 1], 66 / 100],
+    ] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicCrop({
+    name: "Torchberry",
+    tier: 2,
+})), { growthStageAfterHarvest: 2, attributeChemical: 2, attributeFood: 0, attributeDefensive: 0, attributeColor: 2, attributeWeed: 1, attributes: ["Berry", "Glow", "Shimmer"], growthStages: [100, 150, 150, 0], possibleDrops: [[["Torchberries", 1], 1]] }));
+
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicWitcheryCrop({
+    name: "Belladonna",
+})), { attributes: ["Purple", "Flower", "Toxic", "Ingredient"], possibleDrops: [[['Belladonna', 1], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicWitcheryCrop({
+    name: "Ember Moss",
+    tier: 7,
+})), { attributes: ["Fire", "Ingredient", "Bad", "Climbable"], possibleDrops: [[['Ember Moss', 1], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicWitcheryCrop({
+    name: "Garlic",
+    tier: makeCppBasicWitcheryCrop({}).tier + 2,
+})), { attributes: ["Food", "Ingredient", "Healing"], possibleDrops: [[['Garlic (Witchery)', 1], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicWitcheryCrop({
+    name: "Glint Weed",
+})), { attributes: ["Orange", "Flower", "Magic"], possibleDrops: [[['Glint Weed', 1], 1]] }));
+let berryGain = 1; // Config value: berriespp.cfg > gain > D:"All crops"
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicWitcheryCrop({
+    name: "Mandragora",
+})), { attributes: ["Flower", "Magic", "Bad", "Toxic", "Ingredient"], possibleDrops: [[['Mandrake Root', 1], 1]], gainFactor: Math.pow(0.95, makeCppBasicWitcheryCrop({}).tier) * berryGain }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicWitcheryCrop({
+    name: "Snowbell",
+})), { attributes: ["White", "Flower", "Ice", "Toxic", "Ingredient"], possibleDrops: [[['Icy Needle', 1], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicWitcheryCrop({
+    name: "Spanish Moss",
+    tier: 7,
+})), { attributes: ["Green", "Climbable", "Magic"], possibleDrops: [[['Spanish Moss', 1], 1]] }));
+CropData.registerCrop(Object.assign(Object.assign({}, makeCppBasicWitcheryCrop({
+    name: "Artichoke",
+})), { attributes: ["Flower", "Water", "Blue", "Ingredient"], possibleDrops: [[['Water Artichoke Globe', 1], 1]] }));
 
 /* Good Generator has a single crop,
  * defined in src/main/java/goodgenerator/crossmod/ic2/GGCropsSaltyRoot.java.
